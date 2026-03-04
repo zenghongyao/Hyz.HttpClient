@@ -11,6 +11,9 @@
 - 📦 **类型安全**：强类型的请求和响应
 - 🔒 **线程安全**：策略缓存优化，支持并发配置更新
 - 🎨 **优雅的 API 设计**：简单易用，开箱即用
+- 🎉 **直接实例化支持**：BaseRequest 类现在可以直接实例化，无需创建子类
+- 🔗 **属性自动合并**：子类的属性会自动与 SetBody() 设置的参数合并
+- 🔍 **属性自动作为查询参数**：子类的公共属性会自动作为查询参数添加到 URL 中
 
 ## 📦 安装
 
@@ -46,6 +49,8 @@ var serviceProvider = services.BuildServiceProvider();
 
 ### 2. 注入并使用
 
+#### 2.1 直接使用 BaseRequest（新增特性）
+
 ```csharp
 public class UserService
 {
@@ -56,11 +61,13 @@ public class UserService
         _httpClientService = httpClientService;
     }
 
-    // GET 请求
+    // GET 请求 - 直接使用 BaseRequest
     public async Task<List<User>?> GetUsersAsync(int page = 1, int pageSize = 20)
     {
-        var request = new BaseApiRequest<UserListResponse>();
+        // 直接实例化 BaseRequest，无需创建子类
+        var request = new BaseRequest<UserListResponse>();
         request.SetRequestApi("/api/users");
+        request.Method = "GET";
 
         // 添加查询参数
         request.AddQueryParameter("page", page.ToString());
@@ -70,11 +77,12 @@ public class UserService
         return response?.Result == true ? response.Users : null;
     }
 
-    // POST 请求
+    // POST 请求 - 直接使用 BaseRequest
     public async Task<User?> CreateUserAsync(CreateUserDto userDto)
     {
-        var request = new BaseApiRequest<UserResponse>();
+        var request = new BaseRequest<UserResponse>();
         request.SetRequestApi("/api/users");
+        request.Method = "POST";
 
         // 设置请求体
         request.SetBody(userDto);
@@ -83,76 +91,141 @@ public class UserService
         return response?.Result == true ? response.User : null;
     }
 
-    // PUT 请求
-    public async Task<bool> UpdateUserAsync(int userId, UpdateUserDto userDto)
+    // 使用 SetQueryParameters 合并参数
+    public async Task<List<User>?> GetUsersWithMergedParametersAsync(int page = 1, int pageSize = 20, string sort = "name")
     {
-        var request = new BaseApiRequest<BaseApiResponse>();
-        request.SetRequestApi($"/api/users/{userId}");
+        var request = new BaseRequest<UserListResponse>();
+        request.SetRequestApi("/api/users");
+        request.Method = "GET";
 
-        request.SetBody(userDto);
+        // 先添加一些参数
+        request.AddQueryParameter("page", page.ToString());
+        request.AddQueryParameter("pageSize", pageSize.ToString());
 
-        var response = await _httpClientService.ExecutePutAsync<BaseApiResponse>(request);
-        return response?.Result == true;
-    }
+        // 然后设置新参数，会与现有参数合并
+        var newParameters = new Dictionary<string, string>
+        {
+            { "sort", sort },
+            { "order", "asc" }
+        };
+        request.SetQueryParameters(newParameters);
 
-    // DELETE 请求
-    public async Task<bool> DeleteUserAsync(int userId)
-    {
-        var request = new BaseApiRequest<BaseApiResponse>();
-        request.SetRequestApi($"/api/users/{userId}");
-
-        var response = await _httpClientService.ExecuteDeleteAsync<BaseApiResponse>(request);
-        return response?.Result == true;
-    }
-
-    // PATCH 请求
-    public async Task<bool> PatchUserAsync(int userId, Dictionary<string, object> updates)
-    {
-        var request = new BaseApiRequest<BaseApiResponse>();
-        request.SetRequestApi($"/api/users/{userId}");
-
-        request.SetBody(updates);
-
-        var response = await _httpClientService.ExecutePatchAsync<BaseApiResponse>(request);
-        return response?.Result == true;
+        // 最终查询参数会包含：page, pageSize, sort, order
+        var response = await _httpClientService.ExecuteGetAsync<UserListResponse>(request);
+        return response?.Result == true ? response.Users : null;
     }
 }
 ```
 
-### 3. 自定义请求类
+#### 2.2 使用继承的请求类（属性自动合并特性）
 
 ```csharp
-// 继承 BaseApiRequest 创建自己的请求类
-public class LoginRequest : BaseApiRequest<LoginResponse>
+// 继承 BaseRequest 创建自己的请求类
+public class UserRequest : BaseRequest<UserListResponse>
 {
-    public LoginInfo? Login { get; set; }
+    // 这些属性会自动作为查询参数添加到 URL 中
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? Status { get; set; } = "active";
 }
 
-public class LoginInfo
+// 使用继承的请求类
+public async Task<List<User>?> GetUsersWithAutoQueryParamsAsync()
 {
+    var request = new UserRequest();
+    request.SetRequestApi("/api/users");
+    request.Method = "GET";
+    
+    // 无需手动添加查询参数，Page、PageSize、Status 会自动添加
+    // URL 会自动拼接为：/api/users?Page=1&PageSize=20&Status=active
+
+    var response = await _httpClientService.ExecuteGetAsync<UserListResponse>(request);
+    return response?.Result == true ? response.Users : null;
+}
+
+// 继承 BaseRequest 创建登录请求类
+public class LoginRequest : BaseRequest<LoginResponse>
+{
+    // 这些属性会自动与 SetBody() 设置的参数合并
     public string? Username { get; set; }
     public string? Password { get; set; }
 }
 
-public class LoginResponse : BaseApiResponse
-{
-    public string? Token { get; set; }
-    public string? RefreshToken { get; set; }
-}
-
-// 使用自定义请求类
+// 使用继承的请求类（属性自动合并）
 public async Task<string?> LoginAsync(string username, string password)
 {
     var request = new LoginRequest();
     request.SetRequestApi("/api/login");
-    request.Login = new LoginInfo
-    {
-        Username = username,
-        Password = password
-    };
+    request.Method = "POST";
+    
+    // 设置属性
+    request.Username = username;
+    request.Password = password;
+    
+    // 可以额外设置其他参数，会与属性自动合并
+    request.SetBody(new { RememberMe = true });
+    
+    // 请求体最终会包含：{ "Username": "...", "Password": "...", "RememberMe": true }
 
     var response = await _httpClientService.ExecutePostAsync<LoginResponse>(request);
     return response?.Result == true ? response.Token : null;
+}
+
+```
+
+### 3. 自定义请求类（高级用法）
+
+对于更复杂的场景，你可以创建更详细的自定义请求类：
+
+```csharp
+// 继承 BaseRequest 创建复杂的请求类
+public class SearchRequest : BaseRequest<SearchResponse>
+{
+    // 这些属性会自动作为查询参数
+    public string? Keyword { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    
+    // 复杂类型属性不会作为查询参数，但会在请求体中使用
+    public FilterOptions? Filters { get; set; }
+}
+
+public class FilterOptions
+{
+    public List<string>? Categories { get; set; }
+    public decimal? MinPrice { get; set; }
+    public decimal? MaxPrice { get; set; }
+}
+
+// 使用复杂的自定义请求类
+public async Task<SearchResponse?> SearchAsync(string keyword, List<string> categories)
+{
+    var request = new SearchRequest();
+    request.SetRequestApi("/api/search");
+    request.Method = "GET";
+    
+    // 设置属性，Keyword、Page、PageSize 会自动作为查询参数
+    request.Keyword = keyword;
+    request.Categories = categories;
+    
+    // URL 会自动拼接为：/api/search?Keyword=...&Page=1&PageSize=20
+
+    var response = await _httpClientService.ExecuteGetAsync<SearchResponse>(request);
+    return response;
+}
+
+// POST 请求示例
+public async Task<CreateProductResponse?> CreateProductAsync(ProductDto product)
+{
+    var request = new BaseRequest<CreateProductResponse>();
+    request.SetRequestApi("/api/products");
+    request.Method = "POST";
+    
+    // 直接设置请求体
+    request.SetBody(product);
+
+    var response = await _httpClientService.ExecutePostAsync<CreateProductResponse>(request);
+    return response;
 }
 ```
 
@@ -258,19 +331,19 @@ var response = await _httpClientService.ExecutePostAsync<CreateUserResponse>(
 | `ExecutePatchAsync<T>()` | 发送 PATCH 请求 |
 | `ExecuteAsync<T>()` | 通用方法，支持任意 HTTP 方法 |
 
-### BaseApiRequest<T>
+### BaseRequest<T>
 
 | 属性/方法 | 说明 |
 |-----------|------|
 | `SetRequestApi(string path)` | 设置 API 路径 |
-| `GetRequestApi()` | 获取 API 路径（自动拼接查询参数） |
+| `GetRequestApi()` | 获取 API 路径（自动拼接查询参数，包括子类属性） |
 | `AddHeader(key, value)` | 添加单个请求头 |
 | `SetHeaders(dictionary)` | 批量设置请求头 |
 | `GetHeaders()` | 获取请求头字典 |
-| `AddQueryParameter(key, value)` | 添加单个查询参数 |
-| `SetQueryParameters(dictionary)` | 批量设置查询参数 |
-| `GetQueryParameters()` | 获取查询参数字典 |
-| `SetBody(object)` | 设置请求体 |
+| `AddQueryParameter(key, value)` | 添加单个查询参数（会与子类属性合并，显式设置的参数优先级高于子类属性） |
+| `SetQueryParameters(dictionary)` | 批量设置查询参数（会与现有查询参数合并，显式设置的参数优先级高于现有参数） |
+| `GetQueryParameters()` | 获取所有合并的查询参数（包括通过AddQueryParameter、SetQueryParameters设置的参数和子类的属性） |
+| `SetBody(object)` | 设置请求体（会与子类属性自动合并） |
 | `GetBody()` | 获取请求体对象 |
 | `Method` | HTTP 方法（GET/POST/PUT/DELETE/PATCH） |
 
@@ -319,6 +392,76 @@ request.AddHeader("X-Request-ID", Guid.NewGuid().ToString());
 | PUT | 完整更新 | 更新整个资源 |
 | PATCH | 部分更新 | 更新资源的部分字段 |
 | DELETE | 删除资源 | 删除记录 |
+
+### 6. 直接实例化 BaseRequest 的最佳实践
+
+```csharp
+// 对于简单请求，直接使用 BaseRequest
+var request = new BaseRequest<UserResponse>();
+request.SetRequestApi("/api/users");
+request.Method = "GET";
+request.AddQueryParameter("id", "123");
+
+// 对于复杂请求，创建专用的请求类
+public class UserRequest : BaseRequest<UserResponse>
+{
+    public int Id { get; set; }
+    public string? Name { get; set; }
+}
+
+var request = new UserRequest();
+request.SetRequestApi("/api/users");
+request.Method = "GET";
+request.Id = 123;
+// Id 会自动作为查询参数
+```
+
+### 7. 使用子类属性自动作为查询参数的最佳实践
+
+```csharp
+// 为查询参数创建专用的请求类
+public class SearchRequest : BaseRequest<SearchResponse>
+{
+    // 这些属性会自动作为查询参数
+    public string? Keyword { get; set; }
+    public int Page { get; set; } = 1;
+    public int PageSize { get; set; } = 20;
+    public string? SortBy { get; set; } = "name";
+    public string? Order { get; set; } = "asc";
+}
+
+// 使用时只需设置属性
+var request = new SearchRequest();
+request.SetRequestApi("/api/search");
+request.Method = "GET";
+request.Keyword = "test";
+// URL 会自动拼接为：/api/search?Keyword=test&Page=1&PageSize=20&SortBy=name&Order=asc
+```
+
+### 8. 使用属性自动合并的最佳实践
+
+```csharp
+// 为请求体创建专用的请求类
+public class CreateUserRequest : BaseRequest<UserResponse>
+{
+    // 这些属性会自动与 SetBody() 设置的参数合并
+    public string? Username { get; set; }
+    public string? Email { get; set; }
+    public string? Password { get; set; }
+}
+
+// 使用时设置属性并添加额外参数
+var request = new CreateUserRequest();
+request.SetRequestApi("/api/users");
+request.Method = "POST";
+request.Username = "testuser";
+request.Email = "test@example.com";
+request.Password = "password123";
+
+// 添加额外参数，会与属性自动合并
+request.SetBody(new { Role = "user", Active = true });
+// 请求体最终会包含：{ "Username": "testuser", "Email": "test@example.com", "Password": "password123", "Role": "user", "Active": true }
+```
 
 
 ## 📄 许可证

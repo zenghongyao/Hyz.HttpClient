@@ -14,6 +14,13 @@ namespace Hyz.HttpClient.Tests
             
         }
 
+        private class TestRequestWithProperties : BaseRequest<object>
+        {
+            public string? Username { get; set; }
+            public int Age { get; set; }
+            public string? City { get; set; }
+        }
+
         [Fact]
         public void SetRequestApi_ShouldSetUrl()
         {
@@ -86,7 +93,7 @@ namespace Hyz.HttpClient.Tests
         }
 
         [Fact]
-        public void SetQueryParameters_ShouldReplaceParameters()
+        public void SetQueryParameters_ShouldMergeParameters()
         {
             // Arrange
             var request = new TestRequest();
@@ -105,7 +112,7 @@ namespace Hyz.HttpClient.Tests
             var url = request.GetRequestApi();
             Assert.Contains("page=2", url);
             Assert.Contains("pageSize=30", url);
-            Assert.DoesNotContain("old", url);
+            Assert.Contains("old=value", url); // Should still be present
         }
 
         [Fact]
@@ -177,6 +184,139 @@ namespace Hyz.HttpClient.Tests
 
             // Assert
             Assert.Equal("GET", request.Method);
+        }
+
+        [Fact]
+        public void GetRequestApi_ShouldAddPropertiesAsQueryParameters()
+        {
+            // Arrange
+            var request = new TestRequestWithProperties();
+            request.SetRequestApi("/api/users");
+            request.Username = "testuser";
+            request.Age = 30;
+            request.City = "Beijing";
+
+            // Act
+            var url = request.GetRequestApi();
+
+            // Assert
+            Assert.Contains("Username=testuser", url);
+            Assert.Contains("Age=30", url);
+            Assert.Contains("City=Beijing", url);
+        }
+
+        [Fact]
+        public void GetRequestApi_ExplicitQueryParametersShouldOverrideProperties()
+        {
+            // Arrange
+            var request = new TestRequestWithProperties();
+            request.SetRequestApi("/api/users");
+            request.Username = "testuser";
+            request.Age = 30;
+            request.City = "Beijing";
+            // Add explicit query parameter with the same name as a property
+            request.AddQueryParameter("Username", "overrideuser");
+            request.AddQueryParameter("Age", "40");
+
+            // Act
+            var url = request.GetRequestApi();
+
+            // Assert
+            Assert.Contains("Username=overrideuser", url); // Explicit parameter should take priority
+            Assert.Contains("Age=40", url); // Explicit parameter should take priority
+            Assert.Contains("City=Beijing", url); // No explicit parameter, so use property value
+        }
+
+        [Fact]
+        public void GetQueryParameters_ShouldReturnMergedParameters()
+        {
+            // Arrange
+            var request = new TestRequestWithProperties();
+            request.Username = "testuser";
+            request.Age = 30;
+            request.City = "Beijing";
+            // Add explicit query parameter with the same name as a property
+            request.AddQueryParameter("Username", "overrideuser");
+            request.AddQueryParameter("Page", "1");
+
+            // Act
+            var queryParameters = request.GetQueryParameters();
+
+            // Assert
+            Assert.NotNull(queryParameters);
+            Assert.Equal(4, queryParameters.Count);
+            Assert.Equal("overrideuser", queryParameters["Username"]); // Explicit parameter should take priority
+            Assert.Equal("30", queryParameters["Age"]); // Property value
+            Assert.Equal("Beijing", queryParameters["City"]); // Property value
+            Assert.Equal("1", queryParameters["Page"]); // Explicit parameter
+        }
+
+        [Fact]
+        public void GetQueryParameters_WithNoParameters_ShouldReturnNull()
+        {
+            // Arrange
+            var request = new TestRequest();
+
+            // Act
+            var queryParameters = request.GetQueryParameters();
+
+            // Assert
+            Assert.Null(queryParameters);
+        }
+
+        [Fact]
+        public void SetQueryParameters_ShouldMergeWithExistingParameters()
+        {
+            // Arrange
+            var request = new TestRequest();
+            // Add some parameters first
+            request.AddQueryParameter("page", "1");
+            request.AddQueryParameter("pageSize", "20");
+            // Then set new parameters
+            var newParameters = new Dictionary<string, string>
+            {
+                { "sort", "name" },
+                { "order", "asc" }
+            };
+            request.SetQueryParameters(newParameters);
+
+            // Act
+            var queryParameters = request.GetQueryParameters();
+
+            // Assert
+            Assert.NotNull(queryParameters);
+            Assert.Equal(4, queryParameters.Count);
+            Assert.Equal("1", queryParameters["page"]);
+            Assert.Equal("20", queryParameters["pageSize"]);
+            Assert.Equal("name", queryParameters["sort"]);
+            Assert.Equal("asc", queryParameters["order"]);
+        }
+
+        [Fact]
+        public void SetQueryParameters_ShouldOverrideExistingParameters()
+        {
+            // Arrange
+            var request = new TestRequest();
+            // Add some parameters first
+            request.AddQueryParameter("page", "1");
+            request.AddQueryParameter("pageSize", "20");
+            // Then set new parameters with some overlapping keys
+            var newParameters = new Dictionary<string, string>
+            {
+                { "page", "2" }, // Override existing parameter
+                { "sort", "name" }
+            };
+            request.SetQueryParameters(newParameters);
+
+            // Act
+            var queryParameters = request.GetQueryParameters();
+
+            // Assert
+            Assert.NotNull(queryParameters);
+            Assert.Equal(3, queryParameters.Count);
+            Assert.Equal("2", queryParameters["page"]); // Should be overridden
+            Assert.Equal("20", queryParameters["pageSize"]);
+            Assert.Equal("name", queryParameters["sort"]);
         }
     }
 }

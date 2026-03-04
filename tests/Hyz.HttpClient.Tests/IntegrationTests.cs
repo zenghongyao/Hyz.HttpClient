@@ -23,6 +23,10 @@ namespace Hyz.HttpClient.Tests
             public List<User>? Users { get; set; }
         }
 
+        private class UsersListResponse : List<User>
+        {
+        }
+
         private class SimpleResponse
         {
             public int Code { get; set; }
@@ -55,7 +59,7 @@ namespace Hyz.HttpClient.Tests
             // return;
 
             // Arrange
-            var request = new SimpleApiRequest<UserResponse>();
+            var request = new SimpleApiRequest<UsersListResponse>();
             request.SetRequestApi("https://jsonplaceholder.typicode.com/users");
             request.AddQueryParameter("_limit", "5");
             request.AddHeader("Accept", "application/json");
@@ -67,11 +71,11 @@ namespace Hyz.HttpClient.Tests
             var service = new HttpClientRequest(logger, factory, jsonSerializerOptions);
 
             // Act
-            var response = await service.ExecuteGetAsync<UserResponse>(request);
+            var response = await service.ExecuteGetAsync<UsersListResponse>(request);
 
             // Assert
             Assert.NotNull(response);
-            Assert.Equal(0, response.Code);
+            Assert.True(response.Count > 0);
         }
 
         [Fact]
@@ -197,10 +201,120 @@ namespace Hyz.HttpClient.Tests
             Assert.DoesNotContain("OldHeader", headers.Keys);
         }
 
+        [Fact]
+        public void DirectBaseRequestUsage_ShouldWork()
+        {
+            // Arrange & Act
+            var request = new BaseRequest<SimpleResponse>();
+            request.SetRequestApi("/api/direct");
+            request.Method = "GET";
+            request.AddHeader("Accept", "application/json");
+            request.AddQueryParameter("id", "123");
+
+            // Assert
+            Assert.Equal("/api/direct?id=123", request.GetRequestApi());
+            Assert.NotNull(request.GetHeaders());
+            Assert.Equal(1, request.GetHeaders()!.Count);
+            Assert.Equal("GET", request.Method);
+        }
+
+        [Fact]
+        public void InheritedBaseRequest_PropertiesShouldMergeWithSetBody()
+        {
+            // Arrange
+            var request = new TestRequest();
+            request.SetRequestApi("/api/test");
+            request.Username = "testuser";
+            request.Email = "test@example.com";
+
+            // Set body with additional properties
+            request.SetBody(new { Age = 30, City = "Beijing" });
+
+            // Act
+            var body = request.GetBody();
+
+            // Assert
+            Assert.NotNull(body);
+            // Verify that body is a dictionary containing both properties from the class and from SetBody
+            var bodyDict = body as Dictionary<string, object>;
+            Assert.NotNull(bodyDict);
+            Assert.Contains("Username", bodyDict.Keys);
+            Assert.Contains("Email", bodyDict.Keys);
+            Assert.Contains("Age", bodyDict.Keys);
+            Assert.Contains("City", bodyDict.Keys);
+            Assert.Equal("testuser", bodyDict["Username"]);
+            Assert.Equal("test@example.com", bodyDict["Email"]);
+            Assert.Equal(30, bodyDict["Age"]);
+            Assert.Equal("Beijing", bodyDict["City"]);
+        }
+
+        [Fact]
+        public void InheritedBaseRequest_WithoutSetBody_ShouldReturnInstance()
+        {
+            // Arrange
+            var request = new TestRequest();
+            request.SetRequestApi("/api/test");
+            request.Username = "testuser";
+            request.Email = "test@example.com";
+
+            // Act
+            var body = request.GetBody();
+
+            // Assert
+            Assert.NotNull(body);
+            // Verify that body is the request instance itself
+            Assert.IsType<TestRequest>(body);
+            var testRequestBody = body as TestRequest;
+            Assert.Equal("testuser", testRequestBody!.Username);
+            Assert.Equal("test@example.com", testRequestBody!.Email);
+        }
+
+        [Fact]
+        public void InheritedBaseRequest_PropertiesShouldBeAddedAsQueryParameters()
+        {
+            // Arrange
+            var request = new TestRequest();
+            request.SetRequestApi("/api/users");
+            request.Username = "testuser";
+            request.Email = "test@example.com";
+
+            // Act
+            var url = request.GetRequestApi();
+
+            // Assert
+            Assert.Contains("Username=testuser", url);
+            Assert.Contains("Email=test%40example.com", url); // Email should be URL encoded
+        }
+
+        [Fact]
+        public void InheritedBaseRequest_ExplicitQueryParametersShouldTakePriority()
+        {
+            // Arrange
+            var request = new TestRequest();
+            request.SetRequestApi("/api/users");
+            request.Username = "testuser";
+            request.Email = "test@example.com";
+            // Add explicit query parameter with the same name as a property
+            request.AddQueryParameter("Username", "overrideuser");
+
+            // Act
+            var url = request.GetRequestApi();
+
+            // Assert
+            Assert.Contains("Username=overrideuser", url); // Explicit parameter should take priority
+            Assert.Contains("Email=test%40example.com", url);
+        }
+
         #region Test Helpers
 
         private class SimpleApiRequest<T> : BaseRequest<T> where T : class
         {
+        }
+
+        private class TestRequest : BaseRequest<SimpleResponse>
+        {
+            public string? Username { get; set; }
+            public string? Email { get; set; }
         }
 
         private class HttpClientFactory : IHttpClientFactory

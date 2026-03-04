@@ -5,10 +5,10 @@ using System.Linq;
 namespace Hyz.HttpClient
 {
     /// <summary>
-    /// 基础HTTP请求抽象实现
+    /// 基础HTTP请求实现
     /// </summary>
     /// <typeparam name="T">响应类型</typeparam>
-    public abstract class BaseRequest<T> : IBaseRequest<T>
+    public class BaseRequest<T> : IBaseRequest<T>
         where T : class
     {
         private string _requestApi = string.Empty;
@@ -26,10 +26,13 @@ namespace Hyz.HttpClient
         /// </summary>
         public string GetRequestApi()
         {
-            // 如果有查询参数，自动拼接到URL中
-            if (_queryParameters != null && _queryParameters.Count > 0)
+            // 获取所有合并的查询参数
+            var allQueryParameters = GetQueryParameters();
+
+            // 如果有查询参数，将其拼接到URL中
+            if (allQueryParameters != null && allQueryParameters.Count > 0)
             {
-                var queryString = string.Join("&", _queryParameters.Select(kvp =>
+                var queryString = string.Join("&", allQueryParameters.Select(kvp =>
                     $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
 
                 var separator = _requestApi.Contains('?') ? "&" : "?";
@@ -37,6 +40,20 @@ namespace Hyz.HttpClient
             }
 
             return _requestApi;
+        }
+
+        /// <summary>
+        /// 检查类型是否为简单类型
+        /// </summary>
+        private static bool IsSimpleType(Type type)
+        {
+            return type.IsPrimitive || 
+                   type == typeof(string) || 
+                   type == typeof(decimal) || 
+                   type == typeof(DateTime) || 
+                   type == typeof(DateTimeOffset) || 
+                   type == typeof(TimeSpan) || 
+                   type == typeof(Guid);
         }
 
         /// <summary>
@@ -84,12 +101,48 @@ namespace Hyz.HttpClient
         /// </summary>
         public IDictionary<string, string>? GetQueryParameters()
         {
-            return _queryParameters;
+            // 创建一个字典来存储所有查询参数
+            var allQueryParameters = new Dictionary<string, string>();
+
+            // 添加通过AddQueryParameter/SetQueryParameters设置的查询参数
+            if (_queryParameters != null && _queryParameters.Count > 0)
+            {
+                foreach (var kvp in _queryParameters)
+                {
+                    allQueryParameters[kvp.Key] = kvp.Value;
+                }
+            }
+
+            // 添加子类的公共属性作为查询参数
+            var properties = GetType().GetProperties();
+            foreach (var property in properties)
+            {
+                // 排除Method属性，因为它不是查询参数的一部分
+                if (property.Name != nameof(Method))
+                {
+                    var value = property.GetValue(this);
+                    if (value != null)
+                    {
+                        // 只添加简单类型的属性作为查询参数
+                        if (IsSimpleType(property.PropertyType))
+                        {
+                            // 只有当该属性还没有在查询参数中时才添加
+                            if (!allQueryParameters.ContainsKey(property.Name))
+                            {
+                                allQueryParameters[property.Name] = value.ToString()!;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return allQueryParameters.Count > 0 ? allQueryParameters : null;
         }
 
         /// <summary>
         /// 添加单个查询参数
         /// </summary>
+        /// <remarks>添加的参数会与子类的属性合并，显式设置的参数优先级高于子类属性</remarks>
         public void AddQueryParameter(string key, string value)
         {
             _queryParameters ??= new Dictionary<string, string>();
@@ -99,6 +152,7 @@ namespace Hyz.HttpClient
         /// <summary>
         /// 设置查询参数
         /// </summary>
+        /// <remarks>设置的参数会与现有的查询参数合并，显式设置的参数优先级高于现有参数</remarks>
         public void SetQueryParameters(IDictionary<string, string>? parameters)
         {
             if (parameters == null || parameters.Count == 0)
@@ -107,7 +161,19 @@ namespace Hyz.HttpClient
                 return;
             }
 
-            _queryParameters = new Dictionary<string, string>(parameters);
+            // 如果现有查询参数不为空，合并参数
+            if (_queryParameters != null && _queryParameters.Count > 0)
+            {
+                foreach (var kvp in parameters)
+                {
+                    _queryParameters[kvp.Key] = kvp.Value;
+                }
+            }
+            else
+            {
+                // 如果现有查询参数为空，直接设置
+                _queryParameters = new Dictionary<string, string>(parameters);
+            }
         }
 
         /// <summary>
@@ -115,7 +181,86 @@ namespace Hyz.HttpClient
         /// </summary>
         public object? GetBody()
         {
+            if (_body == null)
+            {
+                // 如果没有通过SetBody()设置请求体，返回当前实例（包含子类的属性）
+                return this;
+            }
+            else if (this != _body && (IsAnonymousType(_body.GetType()) || _body is IDictionary<string, object>))
+            {
+                // 获取当前实例的所有公共属性
+                var currentProperties = GetType().GetProperties();
+                bool hasProperties = false;
+                
+                // 检查是否有除了Method之外的公共属性
+                foreach (var property in currentProperties)
+                {
+                    if (property.Name != nameof(Method) && property.GetValue(this) != null)
+                    {
+                        hasProperties = true;
+                        break;
+                    }
+                }
+
+                // 如果没有属性，直接返回原始请求体
+                if (!hasProperties)
+                {
+                    return _body;
+                }
+
+                // 如果有属性，尝试合并
+                // 创建一个新的字典来存储合并后的属性
+                var mergedBody = new Dictionary<string, object>();
+
+                // 添加当前实例的所有公共属性
+                foreach (var property in currentProperties)
+                {
+                    // 排除Method属性，因为它不是请求体的一部分
+                    if (property.Name != nameof(Method))
+                    {
+                        var value = property.GetValue(this);
+                        if (value != null)
+                        {
+                            mergedBody[property.Name] = value;
+                        }
+                    }
+                }
+
+                // 如果是字典，直接添加所有键值对
+                if (_body is IDictionary<string, object> dict)
+                {
+                    foreach (var kvp in dict)
+                    {
+                        mergedBody[kvp.Key] = kvp.Value;
+                    }
+                }
+                // 如果是匿名对象，获取其所有公共属性
+                else
+                {
+                    var bodyProperties = _body.GetType().GetProperties();
+                    foreach (var property in bodyProperties)
+                    {
+                        var value = property.GetValue(_body);
+                        if (value != null)
+                        {
+                            mergedBody[property.Name] = value;
+                        }
+                    }
+                }
+
+                return mergedBody;
+            }
+
+            // 如果通过SetBody()设置了请求体，且不是匿名对象或字典，直接返回该请求体
             return _body;
+        }
+
+        /// <summary>
+        /// 检查类型是否为匿名类型
+        /// </summary>
+        private static bool IsAnonymousType(Type type)
+        {
+            return type.Namespace == null && type.IsSealed && type.IsClass && type.Name.Contains("AnonymousType");
         }
 
         /// <summary>

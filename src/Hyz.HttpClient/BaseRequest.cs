@@ -27,18 +27,24 @@ namespace Hyz.HttpClient
         /// </summary>
         public string GetRequestApi()
         {
-            // 获取所有合并的查询参数
-            var allQueryParameters = GetQueryParameters();
-
-            // 如果有查询参数，将其拼接到URL中
-            if (allQueryParameters != null && allQueryParameters.Count > 0)
+            string method = Method.ToUpper();
+            // 如果是GET或DELETE请求，将查询参数添加到URL中
+            if (string.Equals(Method, HttpMethod.Get.ToString(), StringComparison.OrdinalIgnoreCase) || string.Equals(Method, HttpMethod.Delete.ToString(), StringComparison.OrdinalIgnoreCase))
             {
-                var queryString = string.Join("&", allQueryParameters.Select(kvp =>
-                    $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
+                // 获取所有合并的查询参数
+                var allQueryParameters = GetQueryParameters();
 
-                var separator = _requestApi.Contains('?') ? "&" : "?";
-                return $"{_requestApi}{separator}{queryString}";
+                // 如果有查询参数，将其拼接到URL中
+                if (allQueryParameters != null && allQueryParameters.Count > 0)
+                {
+                    var queryString = string.Join("&", allQueryParameters.Select(kvp =>
+                        $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
+
+                    var separator = _requestApi.Contains('?') ? "&" : "?";
+                    return $"{_requestApi}{separator}{queryString}";
+                }
             }
+                
             return _requestApi;
         }
 

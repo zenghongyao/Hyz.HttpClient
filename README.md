@@ -67,7 +67,6 @@ public class UserService
         // 直接实例化 BaseRequest，无需创建子类
         var request = new BaseRequest<UserListResponse>();
         request.SetRequestApi("/api/users");
-        request.Method = "GET";
 
         // 添加查询参数
         request.AddQueryParameter("page", page.ToString());
@@ -82,7 +81,6 @@ public class UserService
     {
         var request = new BaseRequest<UserResponse>();
         request.SetRequestApi("/api/users");
-        request.Method = "POST";
 
         // 设置请求体
         request.SetBody(userDto);
@@ -96,7 +94,6 @@ public class UserService
     {
         var request = new BaseRequest<UserListResponse>();
         request.SetRequestApi("/api/users");
-        request.Method = "GET";
 
         // 先添加一些参数
         request.AddQueryParameter("page", page.ToString());
@@ -134,7 +131,6 @@ public async Task<List<User>?> GetUsersWithAutoQueryParamsAsync()
 {
     var request = new UserRequest();
     request.SetRequestApi("/api/users");
-    request.Method = "GET";
     
     // 无需手动添加查询参数，Page、PageSize、Status 会自动添加
     // URL 会自动拼接为：/api/users?Page=1&PageSize=20&Status=active
@@ -156,7 +152,6 @@ public async Task<string?> LoginAsync(string username, string password)
 {
     var request = new LoginRequest();
     request.SetRequestApi("/api/login");
-    request.Method = "POST";
     
     // 设置属性
     request.Username = username;
@@ -202,7 +197,6 @@ public async Task<SearchResponse?> SearchAsync(string keyword, List<string> cate
 {
     var request = new SearchRequest();
     request.SetRequestApi("/api/search");
-    request.Method = "GET";
     
     // 设置属性，Keyword、Page、PageSize 会自动作为查询参数
     request.Keyword = keyword;
@@ -219,7 +213,6 @@ public async Task<CreateProductResponse?> CreateProductAsync(ProductDto product)
 {
     var request = new BaseRequest<CreateProductResponse>();
     request.SetRequestApi("/api/products");
-    request.Method = "POST";
     
     // 直接设置请求体
     request.SetBody(product);

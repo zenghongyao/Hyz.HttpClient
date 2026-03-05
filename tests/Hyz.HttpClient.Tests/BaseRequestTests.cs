@@ -80,6 +80,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
+            request.Method = "GET";
             request.SetRequestApi("/api/users");
 
             // Act
@@ -97,6 +98,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
+            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.AddQueryParameter("old", "value");
 
@@ -120,6 +122,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
+            request.Method = "GET";
             request.SetRequestApi("/api/search");
             request.AddQueryParameter("keyword", "测试&搜索");
 
@@ -135,6 +138,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
+            request.Method = "GET";
             request.SetRequestApi("/api/users?status=active");
             request.AddQueryParameter("page", "1");
 
@@ -191,6 +195,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequestWithProperties();
+            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.Username = "testuser";
             request.Age = 30;
@@ -210,6 +215,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequestWithProperties();
+            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.Username = "testuser";
             request.Age = 30;

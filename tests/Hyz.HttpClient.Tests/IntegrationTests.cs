@@ -145,6 +145,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new SimpleApiRequest<UserResponse>();
+            request.Method = "GET";
             request.SetRequestApi("https://api.example.com/search");
             request.AddQueryParameter("q", "测试&搜索");
             request.AddQueryParameter("filter", "status:active&role:admin");
@@ -263,8 +264,13 @@ namespace Hyz.HttpClient.Tests
             // Assert
             Assert.NotNull(body);
             // Verify that body is the request instance itself
-            Assert.IsType<TestRequest>(body);
-            var testRequestBody = body as TestRequest;
+            var bodyDict = Assert.IsType<Dictionary<string, object>>(body);
+
+            //将字典转换回你的 TestRequest 对象
+            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            var jsonString = JsonSerializer.Serialize(bodyDict);
+            var testRequestBody = JsonSerializer.Deserialize<TestRequest>(jsonString, options);
+            
             Assert.Equal("testuser", testRequestBody!.Username);
             Assert.Equal("test@example.com", testRequestBody!.Email);
         }
@@ -274,6 +280,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
+            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.Username = "testuser";
             request.Email = "test@example.com";
@@ -291,6 +298,7 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
+            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.Username = "testuser";
             request.Email = "test@example.com";

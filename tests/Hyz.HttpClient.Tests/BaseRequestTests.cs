@@ -80,7 +80,6 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
-            request.Method = "GET";
             request.SetRequestApi("/api/users");
 
             // Act
@@ -88,7 +87,7 @@ namespace Hyz.HttpClient.Tests
             request.AddQueryParameter("pageSize", "20");
 
             // Assert
-            var url = request.GetRequestApi();
+            var url = request.GetQueryParametersUrl();
             Assert.Contains("page=1", url);
             Assert.Contains("pageSize=20", url);
         }
@@ -98,7 +97,6 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
-            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.AddQueryParameter("old", "value");
 
@@ -111,7 +109,7 @@ namespace Hyz.HttpClient.Tests
             request.SetQueryParameters(newParams);
 
             // Assert
-            var url = request.GetRequestApi();
+            var url = request.GetQueryParametersUrl();
             Assert.Contains("page=2", url);
             Assert.Contains("pageSize=30", url);
             Assert.Contains("old=value", url); // Should still be present
@@ -122,12 +120,11 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
-            request.Method = "GET";
             request.SetRequestApi("/api/search");
             request.AddQueryParameter("keyword", "测试&搜索");
 
             // Act
-            var url = request.GetRequestApi();
+            var url = request.GetQueryParametersUrl();
 
             // Assert
             Assert.Contains(Uri.EscapeDataString("测试&搜索"), url);
@@ -138,15 +135,14 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
-            request.Method = "GET";
             request.SetRequestApi("/api/users?status=active");
             request.AddQueryParameter("page", "1");
 
             // Act
-            var url = request.GetRequestApi();
-
+            var url = request.GetQueryParametersUrl();
+            var api = request.GetRequestApi();
             // Assert
-            Assert.Contains("status=active", url);
+            Assert.Contains("status=active", api);
             Assert.Contains("&page=1", url);
             Assert.DoesNotContain("?page=1", url);
         }
@@ -195,14 +191,13 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequestWithProperties();
-            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.Username = "testuser";
             request.Age = 30;
             request.City = "Beijing";
 
             // Act
-            var url = request.GetRequestApi();
+            var url = request.GetQueryParametersUrl();
 
             // Assert
             Assert.Contains("Username=testuser", url);
@@ -225,7 +220,7 @@ namespace Hyz.HttpClient.Tests
             request.AddQueryParameter("Age", "40");
 
             // Act
-            var url = request.GetRequestApi();
+            var url = request.GetQueryParametersUrl();
 
             // Assert
             Assert.Contains("Username=overrideuser", url); // Explicit parameter should take priority

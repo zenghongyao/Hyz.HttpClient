@@ -145,13 +145,12 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new SimpleApiRequest<UserResponse>();
-            request.Method = "GET";
             request.SetRequestApi("https://api.example.com/search");
             request.AddQueryParameter("q", "测试&搜索");
             request.AddQueryParameter("filter", "status:active&role:admin");
 
             // Act
-            var url = request.GetRequestApi();
+            var url = request.GetQueryParametersUrl();
 
             // Assert
             Assert.Contains(Uri.EscapeDataString("测试&搜索"), url);
@@ -207,15 +206,15 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange & Act
             var request = new BaseRequest<SimpleResponse>();
+            request.Method= "GET";
             request.SetRequestApi("/api/direct");
-            request.Method = "GET";
             request.AddHeader("Accept", "application/json");
             request.AddQueryParameter("id", "123");
 
             // Assert
-            Assert.Equal("/api/direct?id=123", request.GetRequestApi());
+            Assert.Equal("/api/direct?id=123", request.GetRequestApi()+request.GetQueryParametersUrl());
             Assert.NotNull(request.GetHeaders());
-            Assert.Equal(1, request.GetHeaders()!.Count);
+            Assert.Equal(1, request.GetHeaders()?.Count);
             Assert.Equal("GET", request.Method);
         }
 
@@ -280,13 +279,12 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
-            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.Username = "testuser";
             request.Email = "test@example.com";
 
             // Act
-            var url = request.GetRequestApi();
+            var url = request.GetQueryParametersUrl();
 
             // Assert
             Assert.Contains("Username=testuser", url);
@@ -298,7 +296,6 @@ namespace Hyz.HttpClient.Tests
         {
             // Arrange
             var request = new TestRequest();
-            request.Method = "GET";
             request.SetRequestApi("/api/users");
             request.Username = "testuser";
             request.Email = "test@example.com";
@@ -306,7 +303,7 @@ namespace Hyz.HttpClient.Tests
             request.AddQueryParameter("Username", "overrideuser");
 
             // Act
-            var url = request.GetRequestApi();
+            var url = request.GetQueryParametersUrl();
 
             // Assert
             Assert.Contains("Username=overrideuser", url); // Explicit parameter should take priority

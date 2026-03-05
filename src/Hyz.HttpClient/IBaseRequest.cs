@@ -45,6 +45,11 @@ namespace Hyz.HttpClient
         void SetHeaders(IDictionary<string, string>? headers);
 
         /// <summary>
+        /// 获取查询参数URL
+        /// </summary>
+        string? GetQueryParametersUrl();
+
+        /// <summary>
         /// 获取查询参数
         /// </summary>
         /// <returns>查询参数字典</returns>

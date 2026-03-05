@@ -203,8 +203,8 @@ namespace Hyz.HttpClient
                 "PATCH" => new HttpMethod("PATCH"),
                 _ => throw new NotSupportedException($"不支持的HTTP方法: {request.Method}")
             };
-
-            var httpRequest = new HttpRequestMessage(method, request.GetRequestApi());
+            string api = method != HttpMethod.Get && method != HttpMethod.Delete ? request.GetRequestApi() : $"{request.GetRequestApi()}{request.GetQueryParametersUrl() ?? string.Empty}";
+            var httpRequest = new HttpRequestMessage(method, api);
 
             // 添加请求头
             var headers = request.GetHeaders();

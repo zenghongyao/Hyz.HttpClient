@@ -329,13 +329,14 @@ var response = await _httpClientService.ExecutePostAsync<CreateUserResponse>(
 | 属性/方法 | 说明 |
 |-----------|------|
 | `SetRequestApi(string path)` | 设置 API 路径 |
-| `GetRequestApi()` | 获取 API 路径（自动拼接查询参数，包括子类属性） |
+| `GetRequestApi()` | 获取 API 路径 |
 | `AddHeader(key, value)` | 添加单个请求头 |
 | `SetHeaders(dictionary)` | 批量设置请求头 |
 | `GetHeaders()` | 获取请求头字典 |
 | `AddQueryParameter(key, value)` | 添加单个查询参数（会与子类属性合并，显式设置的参数优先级高于子类属性） |
 | `SetQueryParameters(dictionary)` | 批量设置查询参数（会与现有查询参数合并，显式设置的参数优先级高于现有参数） |
 | `GetQueryParameters()` | 获取所有合并的查询参数（包括通过AddQueryParameter、SetQueryParameters设置的参数和子类的属性） |
+| `GetQueryParametersUrl()` | 获取所有合并的查询参数（包括通过AddQueryParameter、SetQueryParameters设置的参数和子类的属性）返回拼接好的 URL 查询字符串（即 ?key1=value1&key2=value2格式） |
 | `SetBody(object)` | 设置请求体（会与子类属性自动合并） |
 | `GetBody()` | 获取请求体对象 |
 | `Method` | HTTP 方法（GET/POST/PUT/DELETE/PATCH） |

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
 
 namespace Hyz.HttpClient
 {
@@ -17,7 +18,7 @@ namespace Hyz.HttpClient
         private object? _body;
 
         /// <summary>
-        /// HTTP方法
+        /// HTTP方法（不调用通用方法可以忽略）
         /// </summary>
         public string Method { get; set; } = "POST";
 
@@ -38,7 +39,6 @@ namespace Hyz.HttpClient
                 var separator = _requestApi.Contains('?') ? "&" : "?";
                 return $"{_requestApi}{separator}{queryString}";
             }
-
             return _requestApi;
         }
 
@@ -184,7 +184,22 @@ namespace Hyz.HttpClient
             if (_body == null)
             {
                 // 如果没有通过SetBody()设置请求体，返回当前实例（包含子类的属性）
-                return this;
+                var mergedBody = new Dictionary<string, object>();
+                var currentProperties = GetType().GetProperties();
+
+                foreach (var property in currentProperties)
+                {
+                    // 排除Method属性，因为它不是请求体的一部分
+                    if (property.Name != nameof(Method))
+                    {
+                        var value = property.GetValue(this);
+                        if (value != null)
+                        {
+                            mergedBody[property.Name] = value;
+                        }
+                    }
+                }
+                return mergedBody;
             }
             else if (this != _body && (IsAnonymousType(_body.GetType()) || _body is IDictionary<string, object>))
             {

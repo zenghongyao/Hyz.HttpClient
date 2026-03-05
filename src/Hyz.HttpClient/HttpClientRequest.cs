@@ -55,9 +55,9 @@ namespace Hyz.HttpClient
             
             try
             {
-                var client = string.IsNullOrEmpty(clientName)
+                var client = string.IsNullOrWhiteSpace(clientName)
                     ? _httpClientFactory.CreateClient()
-                    : _httpClientFactory.CreateClient(clientName);
+                    : _httpClientFactory.CreateClient(clientName!);
 
                 Func<CancellationToken, ValueTask<object>> executeRequest = async (CancellationToken token) => 
                     await ExecuteRequestCore(client, request, token);

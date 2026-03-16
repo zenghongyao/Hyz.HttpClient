@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Net.Http;
+using System.Reflection;
 
 namespace Hyz.HttpClient
 {
@@ -248,13 +250,13 @@ namespace Hyz.HttpClient
         /// </summary>
         /// <param name="property">属性信息</param>
         /// <returns>属性访问器委托</returns>
-        private Func<object, object> CreatePropertyGetter(System.Reflection.PropertyInfo property)
+        private Func<object, object> CreatePropertyGetter(PropertyInfo property)
         {
-            var instance = System.Linq.Expressions.Expression.Parameter(typeof(object), "instance");
-            var cast = System.Linq.Expressions.Expression.Convert(instance, property.DeclaringType!);
-            var propertyAccess = System.Linq.Expressions.Expression.Property(cast, property);
-            var convertResult = System.Linq.Expressions.Expression.Convert(propertyAccess, typeof(object));
-            var lambda = System.Linq.Expressions.Expression.Lambda<Func<object, object>>(convertResult, instance);
+            var instance = Expression.Parameter(typeof(object), "instance");
+            var cast = Expression.Convert(instance, property.DeclaringType!);
+            var propertyAccess = Expression.Property(cast, property);
+            var convertResult = Expression.Convert(propertyAccess, typeof(object));
+            var lambda = Expression.Lambda<Func<object, object>>(convertResult, instance);
             return lambda.Compile();
         }
 

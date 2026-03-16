@@ -18,12 +18,12 @@ namespace Hyz.HttpClient
         private object? _body;
 
         /// <summary>
-        /// HTTP方法（不调用通用方法可以忽略）
+        /// HTTP方法（不使用通用方法可以省略）
         /// </summary>
         public string Method { get; set; } = "POST";
 
         /// <summary>
-        /// 获取请求API路径
+        /// 获取请求API地址
         /// </summary>
         public string GetRequestApi()
         {
@@ -31,21 +31,21 @@ namespace Hyz.HttpClient
         }
 
         /// <summary>
-        /// 检查类型是否为简单类型
+        /// 判断类型是否为简单类型
         /// </summary>
         private static bool IsSimpleType(Type type)
         {
-            return type.IsPrimitive || 
-                   type == typeof(string) || 
-                   type == typeof(decimal) || 
-                   type == typeof(DateTime) || 
-                   type == typeof(DateTimeOffset) || 
-                   type == typeof(TimeSpan) || 
+            return type.IsPrimitive ||
+                   type == typeof(string) ||
+                   type == typeof(decimal) ||
+                   type == typeof(DateTime) ||
+                   type == typeof(DateTimeOffset) ||
+                   type == typeof(TimeSpan) ||
                    type == typeof(Guid);
         }
 
         /// <summary>
-        /// 设置请求API路径
+        /// 设置请求API地址
         /// </summary>
         public void SetRequestApi(string? path)
         {
@@ -92,7 +92,7 @@ namespace Hyz.HttpClient
             // 获取所有合并的查询参数
             var allQueryParameters = GetQueryParameters();
 
-            // 如果有查询参数，将其拼接到URL中
+            // 如果有查询参数，将其附加到URL中
             if (allQueryParameters != null && allQueryParameters.Count > 0)
             {
                 var queryString = string.Join("&", allQueryParameters.Select(kvp =>
@@ -104,6 +104,16 @@ namespace Hyz.HttpClient
             return null;
         }
 
+
+        /// <summary>
+        /// 检查属性是否有自定义请求参数别名特性
+        /// </summary>
+        /// <param name="property">属性信息</param>
+        /// <returns>是否有自定义特性</returns>
+        private bool HasRequestParameterAliasAttribute(System.Reflection.PropertyInfo property)
+        {
+            return property.GetCustomAttributes(typeof(RequestParameterAliasAttribute), true).Any();
+        }
 
         /// <summary>
         /// 获取查询参数
@@ -124,21 +134,26 @@ namespace Hyz.HttpClient
 
             // 添加子类的公共属性作为查询参数
             var properties = GetType().GetProperties();
-            foreach (var property in properties)
+            var accessors = CreatePropertyAccessors(GetType());
+            
+            for (int i = 0; i < properties.Length; i++)
             {
-                // 排除Method属性，因为它不是查询参数的一部分
-                if (property.Name != nameof(Method))
+                var property = properties[i];
+                var (propertyName, getter) = accessors[i];
+                
+                // 排除名称为Method的属性，除非它有自定义特性（允许通过别名使用）
+                if (property.Name != nameof(Method) || HasRequestParameterAliasAttribute(property))
                 {
-                    var value = property.GetValue(this);
+                    var value = getter(this);
                     if (value != null)
                     {
                         // 只添加简单类型的属性作为查询参数
-                        if (IsSimpleType(property.PropertyType))
+                        if (IsSimpleType(value.GetType()))
                         {
                             // 只有当该属性还没有在查询参数中时才添加
-                            if (!allQueryParameters.ContainsKey(property.Name))
+                            if (!allQueryParameters.ContainsKey(propertyName))
                             {
-                                allQueryParameters[property.Name] = value.ToString()!;
+                                allQueryParameters[propertyName] = value.ToString()!;
                             }
                         }
                     }
@@ -186,6 +201,138 @@ namespace Hyz.HttpClient
         }
 
         /// <summary>
+        /// 属性访问器缓存
+        /// </summary>
+        private static readonly Dictionary<Type, List<(string Name, Func<object, object> Getter)>> _propertyAccessors = new Dictionary<Type, List<(string Name, Func<object, object> Getter)>>();
+
+        /// <summary>
+        /// 获取属性的自定义别名
+        /// </summary>
+        /// <param name="property">属性信息</param>
+        /// <returns>自定义别名，如果没有则返回属性名</returns>
+        private string GetPropertyAlias(System.Reflection.PropertyInfo property)
+        {
+            var attribute = property.GetCustomAttributes(typeof(RequestParameterAliasAttribute), true)        
+                .FirstOrDefault() as RequestParameterAliasAttribute;
+            return attribute?.Alias ?? property.Name;
+        }
+
+        /// <summary>
+        /// 为类型创建属性访问器
+        /// </summary>
+        /// <param name="type">类型</param>
+        /// <returns>属性名称和访问器的列表</returns>
+        private List<(string Name, Func<object, object> Getter)> CreatePropertyAccessors(Type type)
+        {
+            if (_propertyAccessors.TryGetValue(type, out var accessors))
+            {
+                return accessors;
+            }
+
+            var accessorList = new List<(string Name, Func<object, object> Getter)>();
+            var properties = type.GetProperties();
+
+            foreach (var property in properties)
+            {
+                var propertyAlias = GetPropertyAlias(property);
+                var getter = CreatePropertyGetter(property);
+                accessorList.Add((propertyAlias, getter));
+            }
+
+            _propertyAccessors[type] = accessorList;
+            return accessorList;
+        }
+
+        /// <summary>
+        /// 为属性创建访问器委托
+        /// </summary>
+        /// <param name="property">属性信息</param>
+        /// <returns>属性访问器委托</returns>
+        private Func<object, object> CreatePropertyGetter(System.Reflection.PropertyInfo property)
+        {
+            var instance = System.Linq.Expressions.Expression.Parameter(typeof(object), "instance");
+            var cast = System.Linq.Expressions.Expression.Convert(instance, property.DeclaringType!);
+            var propertyAccess = System.Linq.Expressions.Expression.Property(cast, property);
+            var convertResult = System.Linq.Expressions.Expression.Convert(propertyAccess, typeof(object));
+            var lambda = System.Linq.Expressions.Expression.Lambda<Func<object, object>>(convertResult, instance);
+            return lambda.Compile();
+        }
+
+        /// <summary>
+        /// 处理对象，生成后序列化和层级验证器结构体存储分区统计信息
+        /// </summary>
+        /// <param name="obj">要序列化对象转换为字典统计信息</param>
+        /// <returns>结构体存储分区统计信息</returns>
+        private object ProcessObject(object obj)
+        {
+            if (obj == null)
+            {
+                return null;
+            }
+
+            var objType = obj.GetType();
+
+            // 如果是SimpleType，不需要序列化处理
+            if (IsSimpleType(objType))
+            {
+                return obj;
+            }
+
+            // 如果是Dictionary，生成原始位置结构体存储分区统计信息
+            if (obj is IDictionary<string, object> dict)
+            {
+                var result = new Dictionary<string, object>();
+                foreach (var kvp in dict)
+                {
+                    result[kvp.Key] = ProcessObject(kvp.Value);
+                }
+                return result;
+            }
+
+            // 如果是Array或类型，结构体存储分区统计信息
+            if (objType.IsArray)
+            {
+                var array = (Array)obj;
+                var result = new object[array.Length];
+                for (int i = 0; i < array.Length; i++)
+                {
+                    result[i] = ProcessObject(array.GetValue(i));
+                }
+                return result;
+            }
+
+            // 如果是List或类型，结构体存储分区统计信息
+            if (typeof(IEnumerable<object>).IsAssignableFrom(objType))
+            {
+                var enumerable = (IEnumerable<object>)obj;
+                return enumerable.Select(item => ProcessObject(item)).ToArray();
+            }
+
+            // 如果是class或类型，结构体存储分区统计信息
+            var resultDict = new Dictionary<string, object?>();
+            var properties = objType.GetProperties();
+            var accessors = CreatePropertyAccessors(objType);
+            
+            for (int i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+                var (propertyName, getter) = accessors[i];
+                
+                // 只排除名称为Method的属性，除非它有自定义特性（允许通过别名使用）
+                if (property.Name != nameof(Method) || HasRequestParameterAliasAttribute(property))
+                {
+                    var value = getter(obj);
+                    if (value != null)
+                    {
+                        resultDict[propertyName] = ProcessObject(value);
+                    }
+                }
+            }
+
+            return resultDict;
+        }
+
+        /// <summary>
         /// 获取请求体内容
         /// </summary>
         public object? GetBody()
@@ -193,36 +340,31 @@ namespace Hyz.HttpClient
             if (_body == null)
             {
                 // 如果没有通过SetBody()设置请求体，返回当前实例（包含子类的属性）
-                var mergedBody = new Dictionary<string, object>();
-                var currentProperties = GetType().GetProperties();
-
-                foreach (var property in currentProperties)
-                {
-                    // 排除Method属性，因为它不是请求体的一部分
-                    if (property.Name != nameof(Method))
-                    {
-                        var value = property.GetValue(this);
-                        if (value != null)
-                        {
-                            mergedBody[property.Name] = value;
-                        }
-                    }
-                }
-                return mergedBody;
+                var processedBody = ProcessObject(this);
+                var bodyDict = processedBody as Dictionary<string, object>;
+                // 不再自动移除Method键，因为ProcessObject已经处理了排除逻辑
+                return bodyDict?.Count > 0 ? bodyDict : null;
             }
             else if (this != _body && (IsAnonymousType(_body.GetType()) || _body is IDictionary<string, object>))
             {
-                // 获取当前实例的所有公共属性
-                var currentProperties = GetType().GetProperties();
+                // 检查是否有公共属性（包括通过别名设置为Method的属性）
                 bool hasProperties = false;
+                var accessors = CreatePropertyAccessors(GetType());
+                var properties = GetType().GetProperties();
                 
-                // 检查是否有除了Method之外的公共属性
-                foreach (var property in currentProperties)
+                for (int i = 0; i < properties.Length; i++)
                 {
-                    if (property.Name != nameof(Method) && property.GetValue(this) != null)
+                    var property = properties[i];
+                    var (propertyName, getter) = accessors[i];
+                    
+                    // 检查所有属性，包括通过别名设置为Method的属性
+                    if (property.Name != nameof(Method) || HasRequestParameterAliasAttribute(property))
                     {
-                        hasProperties = true;
-                        break;
+                        if (getter(this) != null)
+                        {
+                            hasProperties = true;
+                            break;
+                        }
                     }
                 }
 
@@ -237,16 +379,13 @@ namespace Hyz.HttpClient
                 var mergedBody = new Dictionary<string, object>();
 
                 // 添加当前实例的所有公共属性
-                foreach (var property in currentProperties)
+                var currentBody = ProcessObject(this) as Dictionary<string, object>;
+                if (currentBody != null)
                 {
-                    // 排除Method属性，因为它不是请求体的一部分
-                    if (property.Name != nameof(Method))
+                    // 不再自动移除Method键，因为ProcessObject已经处理了排除逻辑
+                    foreach (var kvp in currentBody)
                     {
-                        var value = property.GetValue(this);
-                        if (value != null)
-                        {
-                            mergedBody[property.Name] = value;
-                        }
+                        mergedBody[kvp.Key] = kvp.Value;
                     }
                 }
 
@@ -255,19 +394,18 @@ namespace Hyz.HttpClient
                 {
                     foreach (var kvp in dict)
                     {
-                        mergedBody[kvp.Key] = kvp.Value;
+                        mergedBody[kvp.Key] = ProcessObject(kvp.Value);
                     }
                 }
-                // 如果是匿名对象，获取其所有公共属性
+                // 如果是匿名对象，获取所有公共属性
                 else
                 {
-                    var bodyProperties = _body.GetType().GetProperties();
-                    foreach (var property in bodyProperties)
+                    var bodyProcessed = ProcessObject(_body);
+                    if (bodyProcessed is Dictionary<string, object> bodyDict)
                     {
-                        var value = property.GetValue(_body);
-                        if (value != null)
+                        foreach (var kvp in bodyDict)
                         {
-                            mergedBody[property.Name] = value;
+                            mergedBody[kvp.Key] = kvp.Value;
                         }
                     }
                 }
@@ -275,12 +413,12 @@ namespace Hyz.HttpClient
                 return mergedBody;
             }
 
-            // 如果通过SetBody()设置了请求体，且不是匿名对象或字典，直接返回该请求体
-            return _body;
+            // 如果通过SetBody()设置了请求体，并且不是匿名对象或字典，直接返回该请求体
+            return ProcessObject(_body);
         }
 
         /// <summary>
-        /// 检查类型是否为匿名类型
+        /// 判断类型是否为匿名类型
         /// </summary>
         private static bool IsAnonymousType(Type type)
         {

@@ -14,6 +14,7 @@
 - 🎉 **直接实例化支持**：BaseRequest 类现在可以直接实例化，无需创建子类
 - 🔗 **属性自动合并**：子类的属性会自动与 SetBody() 设置的参数合并
 - 🔍 **属性自动作为查询参数**：子类的公共属性会自动作为查询参数添加到 URL 中
+- 🏷️ **请求参数别名**：支持使用特性为请求参数设置别名，灵活控制序列化名称
 
 ## 📦 安装
 
@@ -218,6 +219,46 @@ public async Task<CreateProductResponse?> CreateProductAsync(ProductDto product)
     request.SetBody(product);
 
     var response = await _httpClientService.ExecutePostAsync<CreateProductResponse>(request);
+    return response;
+}
+```
+
+### 4. 使用请求参数别名特性
+
+你可以使用 `RequestParameterAlias` 特性为请求参数设置别名，灵活控制序列化名称：
+
+```csharp
+using Hyz.HttpClient;
+
+// 使用 RequestParameterAlias 特性设置参数别名
+public class UserRequest : BaseRequest<UserResponse>
+{
+    [RequestParameterAlias("user_name")]
+    public string? Username { get; set; }
+
+    [RequestParameterAlias("user_age")]
+    public int Age { get; set; }
+
+    // 为 Method 属性设置别名，使其作为请求参数
+    [RequestParameterAlias("Method")]
+    public string HttpMethod { get; set; } = "POST";
+}
+
+// 使用带别名的请求类
+public async Task<UserResponse?> GetUserAsync(string username, int age)
+{
+    var request = new UserRequest();
+    request.SetRequestApi("/api/users");
+    
+    // 设置属性
+    request.Username = username;
+    request.Age = age;
+    request.HttpMethod = "GET";
+    
+    // URL 会自动拼接为：/api/users?user_name=...&user_age=...&Method=GET
+    // 请求体也会使用别名：{ "user_name": "...", "user_age": ..., "Method": "GET" }
+
+    var response = await _httpClientService.ExecuteGetAsync<UserResponse>(request);
     return response;
 }
 ```

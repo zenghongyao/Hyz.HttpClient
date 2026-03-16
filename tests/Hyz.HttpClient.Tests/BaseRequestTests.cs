@@ -319,5 +319,80 @@ namespace Hyz.HttpClient.Tests
             Assert.Equal("20", queryParameters["pageSize"]);
             Assert.Equal("name", queryParameters["sort"]);
         }
+
+        private class TestRequestWithCustomAttributes : BaseRequest<object>
+        {
+            [RequestParameterAlias("user_name")]
+            public string? Username { get; set; }
+
+            [RequestParameterAlias("user_age")]
+            public int Age { get; set; }
+
+            [RequestParameterAlias("Method")]
+            public string HttpMethod { get; set; } = "POST";
+        }
+
+        [Fact]
+        public void GetQueryParameters_ShouldUseCustomAttributeAliases()
+        {
+            // Arrange
+            var request = new TestRequestWithCustomAttributes();
+            request.Username = "testuser";
+            request.Age = 30;
+            request.HttpMethod = "GET";
+
+            // Act
+            var queryParameters = request.GetQueryParameters();
+
+            // Assert
+            Assert.NotNull(queryParameters);
+            Assert.Contains("user_name", queryParameters.Keys);
+            Assert.Contains("user_age", queryParameters.Keys);
+            Assert.Contains("Method", queryParameters.Keys);
+            Assert.Equal("testuser", queryParameters["user_name"]);
+            Assert.Equal("30", queryParameters["user_age"]);
+            Assert.Equal("GET", queryParameters["Method"]);
+        }
+
+        [Fact]
+        public void GetBody_ShouldUseCustomAttributeAliases()
+        {
+            // Arrange
+            var request = new TestRequestWithCustomAttributes();
+            request.Username = "testuser";
+            request.Age = 30;
+            request.HttpMethod = "POST";
+
+            // Act
+            var body = request.GetBody() as Dictionary<string, object>;
+
+            // Assert
+            Assert.NotNull(body);
+            Assert.Contains("user_name", body.Keys);
+            Assert.Contains("user_age", body.Keys);
+            Assert.Contains("Method", body.Keys);
+            Assert.Equal("testuser", body["user_name"]);
+            Assert.Equal(30, body["user_age"]);
+            Assert.Equal("POST", body["Method"]);
+        }
+
+        [Fact]
+        public void GetBody_ShouldExcludeMethodPropertyWithoutAttribute()
+        {
+            // Arrange
+            var request = new TestRequestWithProperties();
+            request.Username = "testuser";
+            request.Age = 30;
+            request.Method = "GET";
+
+            // Act
+            var body = request.GetBody() as Dictionary<string, object>;
+
+            // Assert
+            Assert.NotNull(body);
+            Assert.Contains("Username", body.Keys);
+            Assert.Contains("Age", body.Keys);
+            Assert.DoesNotContain("Method", body.Keys);
+        }
     }
 }

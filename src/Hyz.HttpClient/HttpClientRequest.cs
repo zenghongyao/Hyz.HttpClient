@@ -19,6 +19,7 @@ namespace Hyz.HttpClient
         private readonly ILogger<HttpClientRequest> _logger;
         private readonly IHttpClientFactory _httpClientFactory;
         private readonly JsonSerializerOptions _jsonSerializerOptions;
+        private readonly JsonSerializerOptions _requestSerializerOptions;
 
         /// <summary>
         /// 构造函数
@@ -31,6 +32,12 @@ namespace Hyz.HttpClient
             _logger = logger;
             _httpClientFactory = httpClientFactory;
             _jsonSerializerOptions = jsonSerializerOptions ?? new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            
+            // 为请求体序列化创建单独的选项，确保不使用属性命名策略，保持自定义特性设置的属性名
+            _requestSerializerOptions = new JsonSerializerOptions(_jsonSerializerOptions)
+            {
+                PropertyNamingPolicy = null
+            };
         }
 
         #region 通用请求方法
@@ -222,7 +229,7 @@ namespace Hyz.HttpClient
                 var body = request.GetBody();
                 if (body != null)
                 {
-                    var json = JsonSerializer.Serialize(body, _jsonSerializerOptions);
+                    var json = JsonSerializer.Serialize(body, _requestSerializerOptions);
                     httpRequest.Content = new StringContent(json, Encoding.UTF8, "application/json");
                 }
             }

@@ -42,6 +42,10 @@ namespace Hyz.HttpClient
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
                 //忽略JSON注释	
                 ReadCommentHandling = JsonCommentHandling.Skip,
+                //序列化时忽略 readonly字段
+                IgnoreReadOnlyFields = true,
+                // 序列化时忽略只有 get 没有 set 的属性
+                IgnoreReadOnlyProperties = true,
                 //忽略尾随逗号
                 AllowTrailingCommas = true,
                 //反序列化带引号的数字
@@ -53,17 +57,7 @@ namespace Hyz.HttpClient
                 //格式化输出
                 WriteIndented = true,
                 //元数据处理器
-                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
-                //自定义转换器
-                Converters =
-                {
-                //new StringNumberConverter(),
-                new DateTimeConverter(),
-                // 日期时间转换器
-                new NullableDateTimeConverter(),
-                // 弹性枚举转换器，支持字符串和数字两种方式
-                new FlexibleEnumConverter(),
-               }
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver()
             };
             
             // 为请求体序列化创建单独的选项，确保不使用属性命名策略，保持自定义特性设置的属性名

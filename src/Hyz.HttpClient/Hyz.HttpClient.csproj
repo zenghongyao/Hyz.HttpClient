@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Hyz.HttpClient</PackageId>
-    <Version>0.0.9</Version>
+    <Version>0.1.0</Version>
 	<Authors>hyz</Authors>
 	<PackageId>$(AssemblyName)</PackageId>
 	<Title>$(AssemblyName)</Title>
@@ -25,7 +25,7 @@
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.0" />
     <PackageReference Include="Microsoft.Extensions.Options" Version="6.0.0" />
     <PackageReference Include="Polly" Version="8.4.0" />
-    <PackageReference Include="System.Text.Json" Version="6.0.0" />
+    <PackageReference Include="System.Text.Json" Version="10.0.6" />
   </ItemGroup>
 	
 	<!-- 引入 README.md -->

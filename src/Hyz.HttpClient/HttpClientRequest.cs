@@ -1,13 +1,16 @@
-using System;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Http;
 using Microsoft.Extensions.Logging;
-using System.Text;
-using System.Text.Json;
 using Polly;
+using System;
+using System.Net.Http;
+using System.Text;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Hyz.HttpClient
 {
@@ -31,7 +34,37 @@ namespace Hyz.HttpClient
         {
             _logger = logger;
             _httpClientFactory = httpClientFactory;
-            _jsonSerializerOptions = jsonSerializerOptions ?? new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+            _jsonSerializerOptions = jsonSerializerOptions ?? new JsonSerializerOptions 
+            {
+                //大小写不敏感
+                PropertyNameCaseInsensitive = true,
+                //驼峰命名策略
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                //忽略JSON注释	
+                ReadCommentHandling = JsonCommentHandling.Skip,
+                //忽略尾随逗号
+                AllowTrailingCommas = true,
+                //反序列化带引号的数字
+                NumberHandling = JsonNumberHandling.AllowReadingFromString,
+                //处理循环引用
+                ReferenceHandler = ReferenceHandler.IgnoreCycles,
+                //中文字符转义
+                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                //格式化输出
+                WriteIndented = true,
+                //元数据处理器
+                TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+                //自定义转换器
+                Converters =
+                {
+                //new StringNumberConverter(),
+                new DateTimeConverter(),
+                // 日期时间转换器
+                new NullableDateTimeConverter(),
+                // 弹性枚举转换器，支持字符串和数字两种方式
+                new FlexibleEnumConverter(),
+               }
+            };
             
             // 为请求体序列化创建单独的选项，确保不使用属性命名策略，保持自定义特性设置的属性名
             _requestSerializerOptions = new JsonSerializerOptions(_jsonSerializerOptions)

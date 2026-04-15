@@ -199,10 +199,10 @@ namespace Hyz.HttpClient.Tests
             // Act
             var url = request.GetQueryParametersUrl();
 
-            // Assert
-            Assert.Contains("Username=testuser", url);
-            Assert.Contains("Age=30", url);
-            Assert.Contains("City=Beijing", url);
+            // Assert - 实体类属性默认使用小驼峰命名
+            Assert.Contains("username=testuser", url);
+            Assert.Contains("age=30", url);
+            Assert.Contains("city=Beijing", url);
         }
 
         [Fact]
@@ -215,17 +215,17 @@ namespace Hyz.HttpClient.Tests
             request.Username = "testuser";
             request.Age = 30;
             request.City = "Beijing";
-            // Add explicit query parameter with the same name as a property
-            request.AddQueryParameter("Username", "overrideuser");
-            request.AddQueryParameter("Age", "40");
+            // Add explicit query parameter with the same name as a property (using lowercase to match camelCase)
+            request.AddQueryParameter("username", "overrideuser");
+            request.AddQueryParameter("age", "40");
 
             // Act
             var url = request.GetQueryParametersUrl();
 
-            // Assert
-            Assert.Contains("Username=overrideuser", url); // Explicit parameter should take priority
-            Assert.Contains("Age=40", url); // Explicit parameter should take priority
-            Assert.Contains("City=Beijing", url); // No explicit parameter, so use property value
+            // Assert - 实体类属性默认使用小驼峰命名
+            Assert.Contains("username=overrideuser", url); // Explicit parameter should take priority
+            Assert.Contains("age=40", url); // Explicit parameter should take priority
+            Assert.Contains("city=Beijing", url); // No explicit parameter, so use property value
         }
 
         [Fact]
@@ -236,20 +236,20 @@ namespace Hyz.HttpClient.Tests
             request.Username = "testuser";
             request.Age = 30;
             request.City = "Beijing";
-            // Add explicit query parameter with the same name as a property
-            request.AddQueryParameter("Username", "overrideuser");
-            request.AddQueryParameter("Page", "1");
+            // Add explicit query parameter with the same name as a property (using lowercase to match camelCase)
+            request.AddQueryParameter("username", "overrideuser");
+            request.AddQueryParameter("page", "1");
 
             // Act
             var queryParameters = request.GetQueryParameters();
 
-            // Assert
+            // Assert - 实体类属性默认使用小驼峰命名
             Assert.NotNull(queryParameters);
             Assert.Equal(4, queryParameters.Count);
-            Assert.Equal("overrideuser", queryParameters["Username"]); // Explicit parameter should take priority
-            Assert.Equal("30", queryParameters["Age"]); // Property value
-            Assert.Equal("Beijing", queryParameters["City"]); // Property value
-            Assert.Equal("1", queryParameters["Page"]); // Explicit parameter
+            Assert.Equal("overrideuser", queryParameters["username"]); // Explicit parameter should take priority
+            Assert.Equal("30", queryParameters["age"]); // Property value
+            Assert.Equal("Beijing", queryParameters["city"]); // Property value
+            Assert.Equal("1", queryParameters["page"]); // Explicit parameter
         }
 
         [Fact]
@@ -388,11 +388,167 @@ namespace Hyz.HttpClient.Tests
             // Act
             var body = request.GetBody() as Dictionary<string, object>;
 
-            // Assert
+            // Assert - 实体类属性默认使用小驼峰命名
             Assert.NotNull(body);
-            Assert.Contains("Username", body.Keys);
-            Assert.Contains("Age", body.Keys);
+            Assert.Contains("username", body.Keys);
+            Assert.Contains("age", body.Keys);
             Assert.DoesNotContain("Method", body.Keys);
+            Assert.DoesNotContain("method", body.Keys);
+        }
+
+        [Fact]
+        public void PreserveDictionaryKeyNaming_RequestLevel_ShouldOverrideGlobal()
+        {
+            // Arrange - 保存原始全局设置
+            var originalGlobalSetting = HttpClientPolicy.PreserveDictionaryKeyNaming;
+
+            try
+            {
+                // 设置全局为 false（转小驼峰）
+                HttpClientPolicy.PreserveDictionaryKeyNaming = false;
+
+                var request = new TestRequest();
+                request.SetRequestApi("/api/test");
+                
+                // 单个请求设置为 true（保持原名）
+                request.PreserveDictionaryKeyNaming = true;
+                
+                // 使用字典方式添加查询参数
+                request.AddQueryParameter("User_Name", "testuser");
+                request.AddQueryParameter("Page_Size", "20");
+
+                // Act
+                var url = request.GetQueryParametersUrl();
+
+                // Assert - 单个请求设置覆盖全局设置，保持原名
+                Assert.Contains("User_Name=testuser", url);
+                Assert.Contains("Page_Size=20", url);
+            }
+            finally
+            {
+                // 恢复原始全局设置
+                HttpClientPolicy.PreserveDictionaryKeyNaming = originalGlobalSetting;
+            }
+        }
+
+        [Fact]
+        public void PreserveDictionaryKeyNaming_RequestLevelFalse_ShouldConvertToCamelCase()
+        {
+            // Arrange - 保存原始全局设置
+            var originalGlobalSetting = HttpClientPolicy.PreserveDictionaryKeyNaming;
+
+            try
+            {
+                // 设置全局为 true（保持原名）
+                HttpClientPolicy.PreserveDictionaryKeyNaming = true;
+
+                var request = new TestRequest();
+                request.SetRequestApi("/api/test");
+                
+                // 单个请求设置为 false（转小驼峰）
+                request.PreserveDictionaryKeyNaming = false;
+                
+                // 使用字典方式添加查询参数
+                request.AddQueryParameter("User_Name", "testuser");
+                request.AddQueryParameter("Page_Size", "20");
+
+                // Act
+                var url = request.GetQueryParametersUrl();
+
+                // Assert - 单个请求设置覆盖全局设置，转小驼峰
+                Assert.Contains("user_Name=testuser", url);
+                Assert.Contains("page_Size=20", url);
+            }
+            finally
+            {
+                // 恢复原始全局设置
+                HttpClientPolicy.PreserveDictionaryKeyNaming = originalGlobalSetting;
+            }
+        }
+
+        [Fact]
+        public void PreserveDictionaryKeyNaming_RequestLevelNull_ShouldUseGlobal()
+        {
+            // Arrange - 保存原始全局设置
+            var originalGlobalSetting = HttpClientPolicy.PreserveDictionaryKeyNaming;
+
+            try
+            {
+                // 设置全局为 true（保持原名）
+                HttpClientPolicy.PreserveDictionaryKeyNaming = true;
+
+                var request = new TestRequest();
+                request.SetRequestApi("/api/test");
+                
+                // 单个请求设置为 null（使用全局设置）
+                request.PreserveDictionaryKeyNaming = null;
+                
+                // 使用字典方式添加查询参数
+                request.AddQueryParameter("User_Name", "testuser");
+
+                // Act
+                var url = request.GetQueryParametersUrl();
+
+                // Assert - 使用全局设置，保持原名
+                Assert.Contains("User_Name=testuser", url);
+
+                // 修改全局设置
+                HttpClientPolicy.PreserveDictionaryKeyNaming = false;
+
+                var request2 = new TestRequest();
+                request2.SetRequestApi("/api/test");
+                request2.PreserveDictionaryKeyNaming = null;
+                request2.AddQueryParameter("User_Name", "testuser");
+
+                var url2 = request2.GetQueryParametersUrl();
+
+                // Assert - 使用全局设置，转小驼峰
+                Assert.Contains("user_Name=testuser", url2);
+            }
+            finally
+            {
+                // 恢复原始全局设置
+                HttpClientPolicy.PreserveDictionaryKeyNaming = originalGlobalSetting;
+            }
+        }
+
+        [Fact]
+        public void PreserveDictionaryKeyNaming_BodyDictionary_ShouldRespectRequestLevel()
+        {
+            // Arrange - 保存原始全局设置
+            var originalGlobalSetting = HttpClientPolicy.PreserveDictionaryKeyNaming;
+
+            try
+            {
+                // 设置全局为 false（转小驼峰）
+                HttpClientPolicy.PreserveDictionaryKeyNaming = false;
+
+                var request = new TestRequest();
+                request.SetRequestApi("/api/test");
+                
+                // 单个请求设置为 true（保持原名）
+                request.PreserveDictionaryKeyNaming = true;
+                
+                // 使用字典方式设置请求体
+                request.SetBody(new Dictionary<string, object>
+                {
+                    { "User_Id", 123 },
+                    { "Created_At", "2024-01-01" }
+                });
+
+                // Act
+                var body = request.GetBody() as Dictionary<string, object>;
+
+                // Assert - 单个请求设置覆盖全局设置，保持原名
+                Assert.NotNull(body);
+                Assert.Contains("User_Id", body.Keys);
+                Assert.Contains("Created_At", body.Keys);
+            }
+            finally
+            {
+                // 恢复原始全局设置
+                HttpClientPolicy.PreserveDictionaryKeyNaming = originalGlobalSetting;
+            }
         }
     }
 }

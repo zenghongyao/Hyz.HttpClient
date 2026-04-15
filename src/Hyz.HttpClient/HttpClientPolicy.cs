@@ -16,6 +16,16 @@ namespace Hyz.HttpClient
         private static readonly object _lock = new object();
 
         /// <summary>
+        /// 是否保持字典参数的原始命名（不转换为小驼峰）
+        /// </summary>
+        /// <remarks>
+        /// false: 字典方式设置的参数转换为小驼峰命名（默认）<br/>
+        /// true: 字典方式设置的参数保持原始 key 名称<br/>
+        /// 注意：此配置仅影响字典方式设置的参数，实体类属性始终默认使用小驼峰命名
+        /// </remarks>
+        public static bool PreserveDictionaryKeyNaming { get; set; } = false;
+
+        /// <summary>
         /// 重试配置选项
         /// </summary>
         public class RetryOptions

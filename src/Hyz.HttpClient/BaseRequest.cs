@@ -18,11 +18,33 @@ namespace Hyz.HttpClient
         private IDictionary<string, string>? _headers;
         private IDictionary<string, string>? _queryParameters;
         private object? _body;
+        private bool? _preserveDictionaryKeyNaming;
 
         /// <summary>
         /// HTTP方法（不使用通用方法可以省略）
         /// </summary>
         public string Method { get; set; } = "POST";
+
+        /// <summary>
+        /// 是否保持字典参数的原始命名（单个请求级别）
+        /// </summary>
+        /// <remarks>
+        /// null: 使用全局配置 HttpClientPolicy.PreserveDictionaryKeyNaming（默认）<br/>
+        /// true: 保持字典参数的原始 key 名称<br/>
+        /// false: 字典参数转换为小驼峰命名<br/>
+        /// 注意：此配置仅影响字典方式设置的参数，实体类属性始终默认使用小驼峰命名
+        /// </remarks>
+        public bool? PreserveDictionaryKeyNaming
+        {
+            get => _preserveDictionaryKeyNaming;
+            set => _preserveDictionaryKeyNaming = value;
+        }
+
+        /// <summary>
+        /// 获取当前请求是否保持字典参数原始命名（单个请求设置优先于全局设置）
+        /// </summary>
+        private bool ShouldPreserveDictionaryKeyNaming => 
+            _preserveDictionaryKeyNaming ?? HttpClientPolicy.PreserveDictionaryKeyNaming;
 
         /// <summary>
         /// 获取请求API地址
@@ -130,7 +152,10 @@ namespace Hyz.HttpClient
             {
                 foreach (var kvp in _queryParameters)
                 {
-                    allQueryParameters[kvp.Key] = kvp.Value;
+                    var key = ShouldPreserveDictionaryKeyNaming 
+                        ? kvp.Key 
+                        : ToCamelCase(kvp.Key);
+                    allQueryParameters[key] = kvp.Value;
                 }
             }
 
@@ -211,12 +236,40 @@ namespace Hyz.HttpClient
         /// 获取属性的自定义别名
         /// </summary>
         /// <param name="property">属性信息</param>
-        /// <returns>自定义别名，如果没有则返回属性名</returns>
+        /// <returns>自定义别名，如果没有则返回小驼峰命名的属性名</returns>
         private string GetPropertyAlias(System.Reflection.PropertyInfo property)
         {
             var attribute = property.GetCustomAttributes(typeof(RequestParameterAliasAttribute), true)        
                 .FirstOrDefault() as RequestParameterAliasAttribute;
-            return attribute?.Alias ?? property.Name;
+            
+            if (attribute != null)
+            {
+                return attribute.Alias;
+            }
+            
+            return ToCamelCase(property.Name);
+        }
+
+        /// <summary>
+        /// 将字符串转换为小驼峰命名
+        /// </summary>
+        /// <param name="name">原始名称</param>
+        /// <returns>小驼峰命名的字符串</returns>
+        private static string ToCamelCase(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return name;
+            }
+
+            if (char.IsLower(name[0]))
+            {
+                return name;
+            }
+
+            var chars = name.ToCharArray();
+            chars[0] = char.ToLowerInvariant(chars[0]);
+            return new string(chars);
         }
 
         /// <summary>
@@ -286,7 +339,10 @@ namespace Hyz.HttpClient
                 var result = new Dictionary<string, object>();
                 foreach (var kvp in dict)
                 {
-                    result[kvp.Key] = ProcessObject(kvp.Value);
+                    var key = ShouldPreserveDictionaryKeyNaming 
+                        ? kvp.Key 
+                        : ToCamelCase(kvp.Key);
+                    result[key] = ProcessObject(kvp.Value);
                 }
                 return result;
             }
@@ -396,7 +452,10 @@ namespace Hyz.HttpClient
                 {
                     foreach (var kvp in dict)
                     {
-                        mergedBody[kvp.Key] = ProcessObject(kvp.Value);
+                        var key = ShouldPreserveDictionaryKeyNaming 
+                            ? kvp.Key 
+                            : ToCamelCase(kvp.Key);
+                        mergedBody[key] = ProcessObject(kvp.Value);
                     }
                 }
                 // 如果是匿名对象，获取所有公共属性

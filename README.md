@@ -15,6 +15,7 @@
 - 🔗 **属性自动合并**：子类的属性会自动与 SetBody() 设置的参数合并
 - 🔍 **属性自动作为查询参数**：子类的公共属性会自动作为查询参数添加到 URL 中
 - 🏷️ **请求参数别名**：支持使用特性为请求参数设置别名，灵活控制序列化名称
+- 🐫 **参数命名控制**：支持小驼峰命名自动转换，字典参数可独立控制命名方式
 
 ## 📦 安装
 
@@ -121,7 +122,7 @@ public class UserService
 // 继承 BaseRequest 创建自己的请求类
 public class UserRequest : BaseRequest<UserListResponse>
 {
-    // 这些属性会自动作为查询参数添加到 URL 中
+    // 这些属性会自动作为查询参数添加到 URL 中（自动转小驼峰）
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
     public string? Status { get; set; } = "active";
@@ -134,7 +135,7 @@ public async Task<List<User>?> GetUsersWithAutoQueryParamsAsync()
     request.SetRequestApi("/api/users");
     
     // 无需手动添加查询参数，Page、PageSize、Status 会自动添加
-    // URL 会自动拼接为：/api/users?Page=1&PageSize=20&Status=active
+    // URL 会自动拼接为：/api/users?page=1&pageSize=20&status=active
 
     var response = await _httpClientService.ExecuteGetAsync<UserListResponse>(request);
     return response?.Result == true ? response.Users : null;
@@ -143,7 +144,7 @@ public async Task<List<User>?> GetUsersWithAutoQueryParamsAsync()
 // 继承 BaseRequest 创建登录请求类
 public class LoginRequest : BaseRequest<LoginResponse>
 {
-    // 这些属性会自动与 SetBody() 设置的参数合并
+    // 这些属性会自动与 SetBody() 设置的参数合并（自动转小驼峰）
     public string? Username { get; set; }
     public string? Password { get; set; }
 }
@@ -161,7 +162,7 @@ public async Task<string?> LoginAsync(string username, string password)
     // 可以额外设置其他参数，会与属性自动合并
     request.SetBody(new { RememberMe = true });
     
-    // 请求体最终会包含：{ "Username": "...", "Password": "...", "RememberMe": true }
+    // 请求体最终会包含：{ "username": "...", "password": "...", "rememberMe": true }
 
     var response = await _httpClientService.ExecutePostAsync<LoginResponse>(request);
     return response?.Result == true ? response.Token : null;
@@ -177,7 +178,7 @@ public async Task<string?> LoginAsync(string username, string password)
 // 继承 BaseRequest 创建复杂的请求类
 public class SearchRequest : BaseRequest<SearchResponse>
 {
-    // 这些属性会自动作为查询参数
+    // 这些属性会自动作为查询参数（自动转小驼峰）
     public string? Keyword { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
@@ -203,7 +204,7 @@ public async Task<SearchResponse?> SearchAsync(string keyword, List<string> cate
     request.Keyword = keyword;
     request.Categories = categories;
     
-    // URL 会自动拼接为：/api/search?Keyword=...&Page=1&PageSize=20
+    // URL 会自动拼接为：/api/search?keyword=...&page=1&pageSize=20
 
     var response = await _httpClientService.ExecuteGetAsync<SearchResponse>(request);
     return response;
@@ -352,6 +353,100 @@ var response = await _httpClientService.ExecutePostAsync<CreateUserResponse>(
 );
 ```
 
+### 参数命名控制
+
+#### 命名规则说明
+
+| 参数来源 | 默认行为 | 控制方式 |
+|---------|---------|---------|
+| **实体类属性** | 自动转小驼峰命名 | 使用 `[RequestParameterAlias]` 指定别名 |
+| **字典参数** | 自动转小驼峰命名 | 通过 `PreserveDictionaryKeyNaming` 控制 |
+
+#### 全局配置
+
+```csharp
+// 全局配置：字典参数自动转小驼峰（默认）
+HttpClientPolicy.PreserveDictionaryKeyNaming = false;
+
+// 全局配置：字典参数保持原始 key 名称
+HttpClientPolicy.PreserveDictionaryKeyNaming = true;
+```
+
+#### 单个请求配置
+
+```csharp
+// 全局设置为小驼峰，但这个请求保持原名
+HttpClientPolicy.PreserveDictionaryKeyNaming = false;
+
+var request = new BaseRequest<UserResponse>();
+request.PreserveDictionaryKeyNaming = true;  // 覆盖全局设置
+request.AddQueryParameter("User_Name", "test"); // → User_Name=test（保持原名）
+
+// 全局设置为保持原名，但这个请求使用小驼峰
+HttpClientPolicy.PreserveDictionaryKeyNaming = true;
+
+var request = new BaseRequest<UserResponse>();
+request.PreserveDictionaryKeyNaming = false;  // 覆盖全局设置
+request.AddQueryParameter("User_Name", "test"); // → user_Name=test（转小驼峰）
+```
+
+#### 实体类属性命名
+
+```csharp
+// 实体类属性默认自动转小驼峰
+public class UserRequest : BaseRequest<UserResponse>
+{
+    public string? UserName { get; set; }   // → userName
+    public int PageSize { get; set; }       // → pageSize
+    
+    // 使用别名特性覆盖默认命名
+    [RequestParameterAlias("user_id")]
+    public int UserId { get; set; }         // → user_id
+}
+
+// 使用示例
+var request = new UserRequest();
+request.SetRequestApi("/api/users");
+request.UserName = "test";
+request.PageSize = 20;
+request.UserId = 123;
+// URL: /api/users?userName=test&pageSize=20&user_id=123
+```
+
+#### 字典参数命名
+
+```csharp
+// 字典方式设置的参数，受 PreserveDictionaryKeyNaming 控制
+var request = new BaseRequest<UserResponse>();
+request.SetRequestApi("/api/users");
+
+// 查询参数
+request.AddQueryParameter("User_Name", "test");
+request.AddQueryParameter("Page_Size", "20");
+
+// 请求体
+request.SetBody(new Dictionary<string, object>
+{
+    { "User_Id", 123 },
+    { "Created_At", DateTime.Now }
+});
+
+// PreserveDictionaryKeyNaming = false（默认）时：
+// URL: /api/users?user_Name=test&page_Size=20
+// Body: { "user_Id": 123, "created_At": "..." }
+
+// PreserveDictionaryKeyNaming = true 时：
+// URL: /api/users?User_Name=test&Page_Size=20
+// Body: { "User_Id": 123, "Created_At": "..." }
+```
+
+#### 优先级规则
+
+```
+单个请求设置 (request.PreserveDictionaryKeyNaming) > 全局设置 (HttpClientPolicy.PreserveDictionaryKeyNaming)
+别名特性 [RequestParameterAlias] > 默认命名规则
+```
+
 ## 🎯 API 参考
 
 ### HttpClientRequest
@@ -381,6 +476,13 @@ var response = await _httpClientService.ExecutePostAsync<CreateUserResponse>(
 | `SetBody(object)` | 设置请求体（会与子类属性自动合并） |
 | `GetBody()` | 获取请求体对象 |
 | `Method` | HTTP 方法（GET/POST/PUT/DELETE/PATCH） |
+| `PreserveDictionaryKeyNaming` | 是否保持字典参数的原始命名（单个请求级别，null 时使用全局配置） |
+
+### HttpClientPolicy
+
+| 属性 | 说明 |
+|------|------|
+| `PreserveDictionaryKeyNaming` | 全局配置：是否保持字典参数的原始命名（默认 false，即转小驼峰） |
 
 
 ## 💡 最佳实践
@@ -457,7 +559,7 @@ request.Id = 123;
 // 为查询参数创建专用的请求类
 public class SearchRequest : BaseRequest<SearchResponse>
 {
-    // 这些属性会自动作为查询参数
+    // 这些属性会自动作为查询参数（自动转小驼峰）
     public string? Keyword { get; set; }
     public int Page { get; set; } = 1;
     public int PageSize { get; set; } = 20;
@@ -470,7 +572,7 @@ var request = new SearchRequest();
 request.SetRequestApi("/api/search");
 request.Method = "GET";
 request.Keyword = "test";
-// URL 会自动拼接为：/api/search?Keyword=test&Page=1&PageSize=20&SortBy=name&Order=asc
+// URL 会自动拼接为：/api/search?keyword=test&page=1&pageSize=20&sortBy=name&order=asc
 ```
 
 ### 8. 使用属性自动合并的最佳实践
@@ -479,7 +581,7 @@ request.Keyword = "test";
 // 为请求体创建专用的请求类
 public class CreateUserRequest : BaseRequest<UserResponse>
 {
-    // 这些属性会自动与 SetBody() 设置的参数合并
+    // 这些属性会自动与 SetBody() 设置的参数合并（自动转小驼峰）
     public string? Username { get; set; }
     public string? Email { get; set; }
     public string? Password { get; set; }
@@ -495,7 +597,7 @@ request.Password = "password123";
 
 // 添加额外参数，会与属性自动合并
 request.SetBody(new { Role = "user", Active = true });
-// 请求体最终会包含：{ "Username": "testuser", "Email": "test@example.com", "Password": "password123", "Role": "user", "Active": true }
+// 请求体最终会包含：{ "username": "testuser", "email": "test@example.com", "password": "password123", "role": "user", "active": true }
 ```
 
 

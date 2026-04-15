@@ -233,19 +233,19 @@ namespace Hyz.HttpClient.Tests
             // Act
             var body = request.GetBody();
 
-            // Assert
+            // Assert - 实体类属性默认使用小驼峰命名
             Assert.NotNull(body);
             // Verify that body is a dictionary containing both properties from the class and from SetBody
             var bodyDict = body as Dictionary<string, object>;
             Assert.NotNull(bodyDict);
-            Assert.Contains("Username", bodyDict.Keys);
-            Assert.Contains("Email", bodyDict.Keys);
-            Assert.Contains("Age", bodyDict.Keys);
-            Assert.Contains("City", bodyDict.Keys);
-            Assert.Equal("testuser", bodyDict["Username"]);
-            Assert.Equal("test@example.com", bodyDict["Email"]);
-            Assert.Equal(30, bodyDict["Age"]);
-            Assert.Equal("Beijing", bodyDict["City"]);
+            Assert.Contains("username", bodyDict.Keys);
+            Assert.Contains("email", bodyDict.Keys);
+            Assert.Contains("age", bodyDict.Keys);
+            Assert.Contains("city", bodyDict.Keys);
+            Assert.Equal("testuser", bodyDict["username"]);
+            Assert.Equal("test@example.com", bodyDict["email"]);
+            Assert.Equal(30, bodyDict["age"]);
+            Assert.Equal("Beijing", bodyDict["city"]);
         }
 
         [Fact]
@@ -286,9 +286,9 @@ namespace Hyz.HttpClient.Tests
             // Act
             var url = request.GetQueryParametersUrl();
 
-            // Assert
-            Assert.Contains("Username=testuser", url);
-            Assert.Contains("Email=test%40example.com", url); // Email should be URL encoded
+            // Assert - 实体类属性默认使用小驼峰命名
+            Assert.Contains("username=testuser", url);
+            Assert.Contains("email=test%40example.com", url); // Email should be URL encoded
         }
 
         [Fact]
@@ -299,15 +299,15 @@ namespace Hyz.HttpClient.Tests
             request.SetRequestApi("/api/users");
             request.Username = "testuser";
             request.Email = "test@example.com";
-            // Add explicit query parameter with the same name as a property
-            request.AddQueryParameter("Username", "overrideuser");
+            // Add explicit query parameter with the same name as a property (using lowercase to match camelCase)
+            request.AddQueryParameter("username", "overrideuser");
 
             // Act
             var url = request.GetQueryParametersUrl();
 
-            // Assert
-            Assert.Contains("Username=overrideuser", url); // Explicit parameter should take priority
-            Assert.Contains("Email=test%40example.com", url);
+            // Assert - 实体类属性默认使用小驼峰命名
+            Assert.Contains("username=overrideuser", url); // Explicit parameter should take priority
+            Assert.Contains("email=test%40example.com", url);
         }
 
         #region Test Helpers

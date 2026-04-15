@@ -329,4 +329,289 @@ namespace Hyz.HttpClient.Tests
 
         #endregion
     }
+
+    /// <summary>
+    /// 请求拦截器测试
+    /// </summary>
+    [Collection("RequestInterception")]
+    public class RequestInterceptionTests
+    {
+        private class TestResponse
+        {
+            public int Code { get; set; }
+            public bool Result => Code == 0;
+            public string? Message { get; set; }
+        }
+
+        private class TestRequest : BaseRequest<TestResponse>
+        {
+            public string? Username { get; set; }
+            public int Age { get; set; }
+        }
+
+        private readonly Mock<HttpMessageHandler> _mockHttpMessageHandler;
+        private readonly Mock<ILogger<HttpClientRequest>> _mockLogger;
+        private readonly HttpClientType _httpClient;
+
+        public RequestInterceptionTests()
+        {
+            _mockHttpMessageHandler = new Mock<HttpMessageHandler>();
+            _mockLogger = new Mock<ILogger<HttpClientRequest>>();
+            _httpClient = new HttpClientType(_mockHttpMessageHandler.Object)
+            {
+                BaseAddress = new Uri("https://api.example.com")
+            };
+        }
+
+        [Fact]
+        public async Task OnRequestSending_ShouldBeCalledBeforeRequest()
+        {
+            // Arrange
+            var originalInterceptor = HttpClientPolicy.OnRequestSending;
+            RequestInterceptionContext? capturedContext = null;
+
+            HttpClientPolicy.OnRequestSending = context =>
+            {
+                capturedContext = context;
+            };
+
+            try
+            {
+                var request = new TestRequest();
+                request.SetRequestApi("/api/test");
+                request.Username = "testuser";
+                request.Age = 25;
+                request.AddHeader("Authorization", "Bearer token");
+                request.AddQueryParameter("page", "1");
+
+                var expectedResponse = new TestResponse { Code = 0, Message = "Success" };
+                var responseContent = JsonSerializer.Serialize(expectedResponse);
+
+                _mockHttpMessageHandler
+                    .Protected()
+                    .Setup<Task<HttpResponseMessage>>(
+                        "SendAsync",
+                        ItExpr.IsAny<HttpRequestMessage>(),
+                        ItExpr.IsAny<CancellationToken>())
+                    .ReturnsAsync(new HttpResponseMessage
+                    {
+                        StatusCode = HttpStatusCode.OK,
+                        Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
+                    });
+
+                var jsonSerializerOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var service = new HttpClientRequest(_mockLogger.Object,
+                    new TestHttpClientFactory(_httpClient),
+                    jsonSerializerOptions);
+
+                // Act
+                await service.ExecuteGetAsync<TestResponse>(request);
+
+                // Assert
+                Assert.NotNull(capturedContext);
+                Assert.Equal("/api/test", capturedContext.RequestApi);
+                Assert.Equal("GET", capturedContext.HttpMethod);
+                Assert.Contains("page=1", capturedContext.FullUrl);
+                Assert.NotNull(capturedContext.Headers);
+                Assert.True(capturedContext.Headers.ContainsKey("Authorization"));
+                Assert.NotNull(capturedContext.QueryParameters);
+                Assert.True(capturedContext.QueryParameters.ContainsKey("page"));
+            }
+            finally
+            {
+                HttpClientPolicy.OnRequestSending = originalInterceptor;
+            }
+        }
+
+        [Fact]
+        public async Task OnRequestCompleted_ShouldBeCalledAfterRequest()
+        {
+            // Arrange
+            var originalInterceptor = HttpClientPolicy.OnRequestCompleted;
+            ResponseInterceptionContext? capturedContext = null;
+
+            HttpClientPolicy.OnRequestCompleted = context =>
+            {
+                capturedContext = context;
+            };
+
+            try
+            {
+                var request = new TestRequest();
+                request.SetRequestApi("/api/test");
+                request.Method = "POST";
+                request.SetBody(new { Name = "Test" });
+
+                var expectedResponse = new TestResponse { Code = 0, Message = "Success" };
+                var responseContent = JsonSerializer.Serialize(expectedResponse);
+
+                _mockHttpMessageHandler
+                    .Protected()
+                    .Setup<Task<HttpResponseMessage>>(
+                        "SendAsync",
+                        ItExpr.IsAny<HttpRequestMessage>(),
+                        ItExpr.IsAny<CancellationToken>())
+                    .ReturnsAsync(new HttpResponseMessage
+                    {
+                        StatusCode = HttpStatusCode.OK,
+                        Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
+                    });
+
+                var jsonSerializerOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var service = new HttpClientRequest(_mockLogger.Object,
+                    new TestHttpClientFactory(_httpClient),
+                    jsonSerializerOptions);
+
+                // Act
+                await service.ExecutePostAsync<TestResponse>(request);
+
+                // Assert
+                Assert.NotNull(capturedContext);
+                Assert.Equal(200, capturedContext.StatusCode);
+                Assert.True(capturedContext.IsSuccess);
+                Assert.NotNull(capturedContext.ResponseContent);
+                Assert.Contains("Success", capturedContext.ResponseContent);
+                Assert.True(capturedContext.Duration.TotalMilliseconds >= 0);
+                Assert.Null(capturedContext.Exception);
+            }
+            finally
+            {
+                HttpClientPolicy.OnRequestCompleted = originalInterceptor;
+            }
+        }
+
+        [Fact]
+        public async Task OnRequestCompleted_ShouldCaptureException_WhenRequestFails()
+        {
+            // Arrange
+            var originalInterceptor = HttpClientPolicy.OnRequestCompleted;
+            ResponseInterceptionContext? capturedContext = null;
+
+            HttpClientPolicy.OnRequestCompleted = context =>
+            {
+                capturedContext = context;
+            };
+
+            // 使用新的 mock 对象避免状态污染
+            var mockHttpMessageHandler = new Mock<HttpMessageHandler>();
+            var httpClient = new HttpClientType(mockHttpMessageHandler.Object)
+            {
+                BaseAddress = new Uri("https://api.example.com")
+            };
+
+            try
+            {
+                var request = new TestRequest();
+                request.SetRequestApi("/api/test");
+
+                mockHttpMessageHandler
+                    .Protected()
+                    .Setup<Task<HttpResponseMessage>>(
+                        "SendAsync",
+                        ItExpr.IsAny<HttpRequestMessage>(),
+                        ItExpr.IsAny<CancellationToken>())
+                    .ReturnsAsync(new HttpResponseMessage
+                    {
+                        StatusCode = HttpStatusCode.InternalServerError,
+                        Content = new StringContent("Error", Encoding.UTF8, "application/json")
+                    });
+
+                var jsonSerializerOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var service = new HttpClientRequest(_mockLogger.Object,
+                    new TestHttpClientFactory(httpClient),
+                    jsonSerializerOptions);
+
+                // Act & Assert
+                await Assert.ThrowsAsync<HttpRequestException>(async () =>
+                    await service.ExecuteGetAsync<TestResponse>(request, enableRetry: false));
+
+                Assert.NotNull(capturedContext);
+                Assert.Equal(500, capturedContext.StatusCode);
+                Assert.False(capturedContext.IsSuccess);
+                Assert.NotNull(capturedContext.Exception);
+            }
+            finally
+            {
+                HttpClientPolicy.OnRequestCompleted = originalInterceptor;
+            }
+        }
+
+        [Fact]
+        public async Task OnRequestSending_ShouldCaptureBody_WhenBodyIsSet()
+        {
+            // Arrange
+            var originalInterceptor = HttpClientPolicy.OnRequestSending;
+            RequestInterceptionContext? capturedContext = null;
+
+            HttpClientPolicy.OnRequestSending = context =>
+            {
+                capturedContext = context;
+            };
+
+            try
+            {
+                var request = new TestRequest();
+                request.SetRequestApi("/api/test");
+                request.Method = "POST";
+                request.SetBody(new { UserName = "testuser", Age = 25 });
+
+                var expectedResponse = new TestResponse { Code = 0 };
+                var responseContent = JsonSerializer.Serialize(expectedResponse);
+
+                _mockHttpMessageHandler
+                    .Protected()
+                    .Setup<Task<HttpResponseMessage>>(
+                        "SendAsync",
+                        ItExpr.IsAny<HttpRequestMessage>(),
+                        ItExpr.IsAny<CancellationToken>())
+                    .ReturnsAsync(new HttpResponseMessage
+                    {
+                        StatusCode = HttpStatusCode.OK,
+                        Content = new StringContent(responseContent, Encoding.UTF8, "application/json")
+                    });
+
+                var jsonSerializerOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
+                var service = new HttpClientRequest(_mockLogger.Object,
+                    new TestHttpClientFactory(_httpClient),
+                    jsonSerializerOptions);
+
+                // Act
+                await service.ExecutePostAsync<TestResponse>(request);
+
+                // Assert
+                Assert.NotNull(capturedContext);
+                Assert.NotNull(capturedContext.Body);
+                Assert.NotNull(capturedContext.BodyJson);
+                Assert.Contains("userName", capturedContext.BodyJson);
+                Assert.Contains("testuser", capturedContext.BodyJson);
+            }
+            finally
+            {
+                HttpClientPolicy.OnRequestSending = originalInterceptor;
+            }
+        }
+
+        private class TestHttpClientFactory : IHttpClientFactory
+        {
+            private readonly HttpClientType _httpClient;
+
+            public TestHttpClientFactory(HttpClientType httpClient)
+            {
+                _httpClient = httpClient;
+            }
+
+            public HttpClientType CreateClient(string? name = null)
+            {
+                return _httpClient;
+            }
+        }
+    }
+
+    /// <summary>
+    /// 用于确保拦截器测试顺序执行的集合定义
+    /// </summary>
+    [CollectionDefinition("RequestInterception", DisableParallelization = true)]
+    public class RequestInterceptionCollection
+    {
+    }
 }

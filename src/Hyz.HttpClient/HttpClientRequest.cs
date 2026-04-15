@@ -170,25 +170,79 @@ namespace Hyz.HttpClient
         private async Task<T> ExecuteRequestCore<T>(System.Net.Http.HttpClient client, IBaseRequest<T> request, CancellationToken token) where T : class
         {
             var httpRequest = CreateHttpRequestMessage(request);
-            HttpResponseMessage resp;
+            var startTime = DateTime.Now;
+            HttpResponseMessage? resp = null;
+            string? responseContent = null;
+            Exception? exception = null;
+
+            // 构建请求拦截上下文
+            var requestContext = BuildRequestContext(request, httpRequest);
+
+            // 调用请求前拦截器
+            HttpClientPolicy.OnRequestSending?.Invoke(requestContext);
 
             try
             {
                 resp = await client.SendAsync(httpRequest, token);
                 resp.EnsureSuccessStatusCode();
+                responseContent = await resp.Content.ReadAsStringAsync();
             }
             catch (HttpRequestException ex)
             {
-                // 检查是否是4xx错误（客户端错误，不重试）
-                // 简化处理，不依赖StatusCode属性，因为在旧版本.NET中可能不可用
+                exception = ex;
                 _logger.LogWarning(ex, $"API请求客户端错误: {request.Method} {request.GetRequestApi()}");
                 throw;
             }
+            catch (Exception ex)
+            {
+                exception = ex;
+                throw;
+            }
+            finally
+            {
+                // 调用请求后拦截器
+                var responseContext = new ResponseInterceptionContext
+                {
+                    RequestContext = requestContext,
+                    ResponseMessage = resp,
+                    StatusCode = resp != null ? (int)resp.StatusCode : 0,
+                    IsSuccess = resp?.IsSuccessStatusCode ?? false,
+                    ResponseContent = responseContent,
+                    ResponseTime = DateTime.Now,
+                    Duration = DateTime.Now - startTime,
+                    Exception = exception
+                };
+                HttpClientPolicy.OnRequestCompleted?.Invoke(responseContext);
+            }
 
-            var respContentStr = await resp.Content.ReadAsStringAsync();
 #pragma warning disable CS8603 // 可能返回 null 引用。
-            return JsonSerializer.Deserialize<T>(respContentStr, _jsonSerializerOptions);
+            return JsonSerializer.Deserialize<T>(responseContent, _jsonSerializerOptions);
 #pragma warning restore CS8603 // 可能返回 null 引用。
+        }
+
+        /// <summary>
+        /// 构建请求拦截上下文
+        /// </summary>
+        private RequestInterceptionContext BuildRequestContext<T>(IBaseRequest<T> request, HttpRequestMessage httpRequest) where T : class
+        {
+            var context = new RequestInterceptionContext
+            {
+                RequestApi = request.GetRequestApi(),
+                FullUrl = httpRequest.RequestUri?.ToString() ?? string.Empty,
+                HttpMethod = request.Method,
+                Headers = request.GetHeaders(),
+                QueryParameters = request.GetQueryParameters(),
+                Body = request.GetBody(),
+                RequestTime = DateTime.Now
+            };
+
+            // 序列化请求体为JSON字符串
+            if (context.Body != null)
+            {
+                context.BodyJson = JsonSerializer.Serialize(context.Body, _requestSerializerOptions);
+            }
+
+            return context;
         }
 
         /// <summary>

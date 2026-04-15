@@ -26,6 +26,22 @@ namespace Hyz.HttpClient
         public static bool PreserveDictionaryKeyNaming { get; set; } = false;
 
         /// <summary>
+        /// 请求前拦截器（全局）
+        /// </summary>
+        /// <remarks>
+        /// 在请求发送前调用，可用于日志记录、请求验证等场景
+        /// </remarks>
+        public static Action<RequestInterceptionContext>? OnRequestSending { get; set; }
+
+        /// <summary>
+        /// 请求后拦截器（全局）
+        /// </summary>
+        /// <remarks>
+        /// 在请求完成后调用，可用于日志记录、性能监控等场景
+        /// </remarks>
+        public static Action<ResponseInterceptionContext>? OnRequestCompleted { get; set; }
+
+        /// <summary>
         /// 重试配置选项
         /// </summary>
         public class RetryOptions

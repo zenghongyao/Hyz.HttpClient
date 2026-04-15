@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Hyz.HttpClient</PackageId>
-    <Version>0.0.8</Version>
+    <Version>0.0.9</Version>
 	<Authors>hyz</Authors>
 	<PackageId>$(AssemblyName)</PackageId>
 	<Title>$(AssemblyName)</Title>

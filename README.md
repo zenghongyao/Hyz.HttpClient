@@ -16,6 +16,7 @@
 - 🔍 **属性自动作为查询参数**：子类的公共属性会自动作为查询参数添加到 URL 中
 - 🏷️ **请求参数别名**：支持使用特性为请求参数设置别名，灵活控制序列化名称
 - 🐫 **参数命名控制**：支持小驼峰命名自动转换，字典参数可独立控制命名方式
+- 🔍 **请求拦截器**：支持请求前后的AOP拦截，可用于日志记录、请求验证、性能监控等场景
 
 ## 📦 安装
 
@@ -447,6 +448,123 @@ request.SetBody(new Dictionary<string, object>
 别名特性 [RequestParameterAlias] > 默认命名规则
 ```
 
+### 请求拦截器
+
+请求拦截器允许你在请求发送前和请求完成后执行自定义逻辑，常用于日志记录、请求验证、性能监控等场景。
+
+#### 请求前拦截器
+
+```csharp
+// 配置请求前拦截器
+HttpClientPolicy.OnRequestSending = context =>
+{
+    Console.WriteLine($"=== 请求信息 ===");
+    Console.WriteLine($"请求时间: {context.RequestTime}");
+    Console.WriteLine($"HTTP方法: {context.HttpMethod}");
+    Console.WriteLine($"请求地址: {context.FullUrl}");
+    Console.WriteLine($"请求头: {string.Join(", ", context.Headers?.Keys ?? Array.Empty<string>())}");
+    Console.WriteLine($"查询参数: {string.Join(", ", context.QueryParameters?.Keys ?? Array.Empty<string>())}");
+    
+    if (!string.IsNullOrEmpty(context.BodyJson))
+    {
+        Console.WriteLine($"请求体: {context.BodyJson}");
+    }
+    
+    // 可以在这里进行请求验证
+    if (string.IsNullOrEmpty(context.FullUrl))
+    {
+        throw new InvalidOperationException("请求地址不能为空");
+    }
+};
+```
+
+#### 请求后拦截器
+
+```csharp
+// 配置请求后拦截器
+HttpClientPolicy.OnRequestCompleted = context =>
+{
+    Console.WriteLine($"=== 响应信息 ===");
+    Console.WriteLine($"响应时间: {context.ResponseTime}");
+    Console.WriteLine($"请求耗时: {context.Duration.TotalMilliseconds}ms");
+    Console.WriteLine($"状态码: {context.StatusCode}");
+    Console.WriteLine($"是否成功: {context.IsSuccess}");
+    
+    if (context.Exception != null)
+    {
+        Console.WriteLine($"异常信息: {context.Exception.Message}");
+    }
+    
+    if (!string.IsNullOrEmpty(context.ResponseContent))
+    {
+        Console.WriteLine($"响应内容: {context.ResponseContent}");
+    }
+};
+```
+
+#### 完整示例：日志记录
+
+```csharp
+// 配置请求日志记录
+HttpClientPolicy.OnRequestSending = context =>
+{
+    // 记录请求日志
+    LogRequest(context);
+};
+
+HttpClientPolicy.OnRequestCompleted = context =>
+{
+    // 记录响应日志
+    LogResponse(context);
+    
+    // 性能监控：慢请求告警
+    if (context.Duration.TotalSeconds > 3)
+    {
+        Console.WriteLine($"[告警] 慢请求: {context.RequestContext.FullUrl} 耗时 {context.Duration.TotalSeconds}s");
+    }
+};
+
+private void LogRequest(RequestInterceptionContext context)
+{
+    Console.WriteLine($"[{context.RequestTime:yyyy-MM-dd HH:mm:ss}] {context.HttpMethod} {context.FullUrl}");
+}
+
+private void LogResponse(ResponseInterceptionContext context)
+{
+    var status = context.IsSuccess ? "成功" : "失败";
+    Console.WriteLine($"[{context.ResponseTime:yyyy-MM-dd HH:mm:ss}] {status} ({context.StatusCode}) - {context.Duration.TotalMilliseconds}ms");
+}
+```
+
+#### 请求上下文属性
+
+**RequestInterceptionContext（请求上下文）**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `RequestApi` | string | 请求API地址 |
+| `FullUrl` | string | 完整请求URL（包含查询参数） |
+| `HttpMethod` | string | HTTP方法 |
+| `Headers` | IDictionary | 请求头 |
+| `QueryParameters` | IDictionary | 查询参数 |
+| `Body` | object | 请求体对象 |
+| `BodyJson` | string | 请求体JSON字符串 |
+| `RequestTime` | DateTime | 请求时间 |
+| `Items` | IDictionary | 自定义数据 |
+
+**ResponseInterceptionContext（响应上下文）**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `RequestContext` | RequestInterceptionContext | 请求上下文 |
+| `ResponseMessage` | HttpResponseMessage | HTTP响应消息 |
+| `StatusCode` | int | 响应状态码 |
+| `IsSuccess` | bool | 是否成功 |
+| `ResponseContent` | string | 响应内容 |
+| `ResponseTime` | DateTime | 响应时间 |
+| `Duration` | TimeSpan | 请求耗时 |
+| `Exception` | Exception | 异常信息 |
+
 ## 🎯 API 参考
 
 ### HttpClientRequest
@@ -483,6 +601,35 @@ request.SetBody(new Dictionary<string, object>
 | 属性 | 说明 |
 |------|------|
 | `PreserveDictionaryKeyNaming` | 全局配置：是否保持字典参数的原始命名（默认 false，即转小驼峰） |
+| `OnRequestSending` | 请求前拦截器：在请求发送前调用 |
+| `OnRequestCompleted` | 请求后拦截器：在请求完成后调用 |
+
+### RequestInterceptionContext
+
+| 属性 | 说明 |
+|------|------|
+| `RequestApi` | 请求API地址 |
+| `FullUrl` | 完整请求URL（包含查询参数） |
+| `HttpMethod` | HTTP方法 |
+| `Headers` | 请求头字典 |
+| `QueryParameters` | 查询参数字典 |
+| `Body` | 请求体对象 |
+| `BodyJson` | 请求体JSON字符串 |
+| `RequestTime` | 请求时间 |
+| `Items` | 自定义数据字典 |
+
+### ResponseInterceptionContext
+
+| 属性 | 说明 |
+|------|------|
+| `RequestContext` | 请求上下文 |
+| `ResponseMessage` | HTTP响应消息 |
+| `StatusCode` | 响应状态码 |
+| `IsSuccess` | 是否成功 |
+| `ResponseContent` | 响应内容 |
+| `ResponseTime` | 响应时间 |
+| `Duration` | 请求耗时 |
+| `Exception` | 异常信息（如果请求失败） |
 
 
 ## 💡 最佳实践

@@ -157,10 +157,16 @@ namespace Hyz.HttpClient.Tests
             // Act
             request.SetBody(body);
 
-            // Assert
+            // Assert - GetBody 返回处理后的字典，属性名转为小驼峰
             var retrievedBody = request.GetBody();
             Assert.NotNull(retrievedBody);
-            Assert.Equal(body, retrievedBody);
+            
+            var bodyDict = retrievedBody as Dictionary<string, object>;
+            Assert.NotNull(bodyDict);
+            Assert.Contains("id", bodyDict.Keys);
+            Assert.Contains("name", bodyDict.Keys);
+            Assert.Equal(123, bodyDict["id"]);
+            Assert.Equal("Test", bodyDict["name"]);
         }
 
         [Fact]

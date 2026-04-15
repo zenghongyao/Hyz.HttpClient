@@ -426,10 +426,10 @@ namespace Hyz.HttpClient
                     }
                 }
 
-                // 如果没有属性，直接返回原始请求体
+                // 如果没有属性，直接返回处理后的请求体
                 if (!hasProperties)
                 {
-                    return _body;
+                    return ProcessObject(_body);
                 }
 
                 // 如果有属性，尝试合并

@@ -6,7 +6,7 @@
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <PackageId>Hyz.HttpClient</PackageId>
-    <Version>0.1.2</Version>
+    <Version>0.1.3</Version>
 	<Authors>hyz</Authors>
 	<PackageId>$(AssemblyName)</PackageId>
 	<Title>$(AssemblyName)</Title>
@@ -17,7 +17,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>支持GET/POST/PUT/DELETE/PATCH方法、重试机制、熔断保护、请求头管理、查询参数、请求体等特性</PackageReleaseNotes>
+    <PackageReleaseNotes>支持GET/POST/PUT/DELETE/PATCH方法、重试机制、熔断保护、请求头管理、查询参数、请求体、参数别名、小驼峰命名、请求拦截器、证书配置、JSON反序列化等特性</PackageReleaseNotes>
   </PropertyGroup>
 
   <ItemGroup>

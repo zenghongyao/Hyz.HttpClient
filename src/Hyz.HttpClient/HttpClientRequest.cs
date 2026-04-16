@@ -34,32 +34,7 @@ namespace Hyz.HttpClient
         {
             _logger = logger;
             _httpClientFactory = httpClientFactory;
-            _jsonSerializerOptions = jsonSerializerOptions ?? new JsonSerializerOptions 
-            {
-                //大小写不敏感
-                PropertyNameCaseInsensitive = true,
-                //驼峰命名策略
-                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-                //忽略JSON注释	
-                ReadCommentHandling = JsonCommentHandling.Skip,
-                //序列化时忽略 readonly字段
-                IgnoreReadOnlyFields = true,
-                // 序列化时忽略只有 get 没有 set 的属性
-                IgnoreReadOnlyProperties = true,
-                //忽略尾随逗号
-                AllowTrailingCommas = true,
-                //反序列化带引号的数字
-                NumberHandling = JsonNumberHandling.AllowReadingFromString,
-                //处理循环引用
-                ReferenceHandler = ReferenceHandler.IgnoreCycles,
-                //中文字符转义
-                Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
-                //格式化输出
-                WriteIndented = true,
-                //元数据处理器
-                TypeInfoResolver = new DefaultJsonTypeInfoResolver()
-            };
-            
+            _jsonSerializerOptions = jsonSerializerOptions ?? HttpClientPolicy.DefaultJsonOptions;            
             // 为请求体序列化创建单独的选项，确保不使用属性命名策略，保持自定义特性设置的属性名
             _requestSerializerOptions = new JsonSerializerOptions(_jsonSerializerOptions)
             {

@@ -17,6 +17,7 @@
 - 🏷️ **请求参数别名**：支持使用特性为请求参数设置别名，灵活控制序列化名称
 - 🐫 **参数命名控制**：支持小驼峰命名自动转换，字典参数可独立控制命名方式
 - 🔍 **请求拦截器**：支持请求前后的AOP拦截，可用于日志记录、请求验证、性能监控等场景
+- 🔐 **证书配置**：支持HTTPS证书验证、客户端证书、自定义证书验证回调等
 
 ## 📦 安装
 
@@ -565,6 +566,141 @@ private void LogResponse(ResponseInterceptionContext context)
 | `Duration` | TimeSpan | 请求耗时 |
 | `Exception` | Exception | 异常信息 |
 
+### 证书配置
+
+在 HTTPS 请求场景中，支持以下证书配置方式：
+
+> **默认行为**：
+> - 使用 `AddHyzHttpClient()` 不传证书配置时，默认忽略证书验证错误（`HttpClientPolicy.IgnoreCertificateErrors = true`）
+> - 使用 `AddHyzHttpClient(..., configureCertificate: cert => { ... })` 传入证书配置时，默认启用严格证书验证（`IgnoreCertificateErrors = false`）
+
+#### 全局配置
+
+```csharp
+// 在程序启动时设置（Program.cs 或 Startup.cs）
+HttpClientPolicy.IgnoreCertificateErrors = false; // 生产环境推荐
+```
+
+#### 忽略证书验证（开发/测试环境）
+
+```csharp
+// 方式1：使用默认配置（自动忽略证书错误）
+services.AddHyzHttpClient("MyApiClient",
+    configureClient: client =>
+    {
+        client.BaseAddress = new Uri("https://self-signed.example.com");
+        client.Timeout = TimeSpan.FromSeconds(30);
+    });
+
+// 方式2：显式配置忽略证书（覆盖默认行为）
+services.AddHyzHttpClient("MyApiClient",
+    configureClient: client => client.BaseAddress = new Uri("https://api.example.com"),
+    configureJsonSerializer: null,
+    configureCertificate: cert =>
+    {
+        cert.IgnoreCertificateErrors = true;
+    });
+```
+
+#### 启用严格证书验证（生产环境）
+
+```csharp
+// 传入 configureCertificate 参数后，默认启用严格验证
+services.AddHyzHttpClient("MyApiClient",
+    configureClient: client => client.BaseAddress = new Uri("https://api.example.com"),
+    configureJsonSerializer: null,
+    configureCertificate: cert =>
+    {
+        // 此时 IgnoreCertificateErrors 默认为 false
+        // 可以配置自定义验证逻辑
+        cert.ServerCertificateValidationCallback = (message, certificate, chain, errors) =>
+        {
+            if (certificate != null && certificate.Thumbprint == "YOUR_CERT_THUMBPRINT")
+            {
+                return true;
+            }
+            return false;
+        };
+    });
+```
+
+#### 添加客户端证书
+
+```csharp
+services.AddHyzHttpClient("MyApiClient",
+    configureClient: client =>
+    {
+        client.BaseAddress = new Uri("https://api.example.com");
+    },
+    configureCertificate: cert =>
+    {
+        // 方式1：从文件添加客户端证书
+        cert.AddClientCertificate("path/to/client.pfx", "certificate_password");
+        
+        // 方式2：从字节数组添加
+        // cert.AddClientCertificate(certificateBytes, "password");
+        
+        // 方式3：直接设置证书集合
+        // cert.ClientCertificates = new X509CertificateCollection { certificate };
+    });
+```
+
+#### 配置 SSL 协议版本
+
+```csharp
+services.AddHyzHttpClient("MyApiClient",
+    configureCertificate: cert =>
+    {
+        // 指定 SSL 协议版本
+        cert.SslProtocols = System.Security.Authentication.SslProtocols.Tls12 | 
+                           System.Security.Authentication.SslProtocols.Tls13;
+    });
+```
+
+#### 完整示例：双向证书认证
+
+```csharp
+// Program.cs 或 Startup.cs
+services.AddHyzHttpClient("SecureApiClient",
+    configureClient: client =>
+    {
+        client.BaseAddress = new Uri("https://secure-api.example.com");
+        client.Timeout = TimeSpan.FromSeconds(30);
+    },
+    configureJsonSerializer: json =>
+    {
+        json.PropertyNameCaseInsensitive = true;
+        json.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    },
+    configureCertificate: cert =>
+    {
+        // 添加客户端证书
+        cert.AddClientCertificate("certs/client.pfx", "client_password");
+        
+        // 自定义服务器证书验证
+        cert.ServerCertificateValidationCallback = (message, serverCert, chain, errors) =>
+        {
+            if (serverCert == null) return false;
+            
+            // 验证服务器证书指纹
+            var validThumbprints = new[] { "SERVER_CERT_THUMBPRINT_1", "SERVER_CERT_THUMBPRINT_2" };
+            return validThumbprints.Contains(serverCert.Thumbprint);
+        };
+        
+        // 指定 TLS 版本
+        cert.SslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
+    });
+```
+
+### CertificateOptions 属性
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `IgnoreCertificateErrors` | bool | 是否忽略证书错误（仅开发/测试环境） |
+| `ServerCertificateValidationCallback` | Func | 服务器证书验证回调 |
+| `ClientCertificates` | X509CertificateCollection | 客户端证书集合 |
+| `SslProtocols` | SslProtocols? | SSL 协议版本 |
+
 ## 🎯 API 参考
 
 ### HttpClientRequest
@@ -601,6 +737,7 @@ private void LogResponse(ResponseInterceptionContext context)
 | 属性 | 说明 |
 |------|------|
 | `PreserveDictionaryKeyNaming` | 全局配置：是否保持字典参数的原始命名（默认 false，即转小驼峰） |
+| `IgnoreCertificateErrors` | 全局配置：是否忽略证书验证错误（默认 true，便于开发调试） |
 | `OnRequestSending` | 请求前拦截器：在请求发送前调用 |
 | `OnRequestCompleted` | 请求后拦截器：在请求完成后调用 |
 

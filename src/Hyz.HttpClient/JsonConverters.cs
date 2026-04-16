@@ -93,7 +93,7 @@ namespace Hyz.HttpClient
 
             if (reader.TokenType == JsonTokenType.String)
             {
-                string stringValue = reader.GetString();
+                string? stringValue = reader.GetString();
 
                 // 处理空字符串或 null 字符串
                 if (string.IsNullOrEmpty(stringValue))

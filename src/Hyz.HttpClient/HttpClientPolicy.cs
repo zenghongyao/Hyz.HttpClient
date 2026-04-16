@@ -1,10 +1,14 @@
-using System;
-using System.Net.Http;
-using System.Threading;
-using System.Threading.Tasks;
 using Polly;
 using Polly.CircuitBreaker;
 using Polly.Retry;
+using System;
+using System.Net.Http;
+using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace Hyz.HttpClient
 {
@@ -26,6 +30,16 @@ namespace Hyz.HttpClient
         public static bool PreserveDictionaryKeyNaming { get; set; } = false;
 
         /// <summary>
+        /// 是否忽略证书验证错误（全局配置）
+        /// </summary>
+        /// <remarks>
+        /// true: 忽略所有SSL证书验证错误（默认，便于开发调试）<br/>
+        /// false: 启用严格的证书验证（生产环境推荐）<br/>
+        /// 警告：生产环境建议设置为 false 并配置正确的证书验证
+        /// </remarks>
+        public static bool IgnoreCertificateErrors { get; set; } = true;
+
+        /// <summary>
         /// 请求前拦截器（全局）
         /// </summary>
         /// <remarks>
@@ -40,6 +54,42 @@ namespace Hyz.HttpClient
         /// 在请求完成后调用，可用于日志记录、性能监控等场景
         /// </remarks>
         public static Action<ResponseInterceptionContext>? OnRequestCompleted { get; set; }
+
+        /// <summary>
+        /// 默认JSON序列化配置
+        /// </summary>
+
+        public static readonly JsonSerializerOptions DefaultJsonOptions = new()
+        {
+            //大小写不敏感
+            PropertyNameCaseInsensitive = true,
+            //驼峰命名策略
+            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+            //忽略JSON注释	
+            ReadCommentHandling = JsonCommentHandling.Skip,
+            //序列化时忽略 readonly字段
+            IgnoreReadOnlyFields = true,
+            // 序列化时忽略只有 get 没有 set 的属性
+            IgnoreReadOnlyProperties = true,
+            //忽略尾随逗号
+            AllowTrailingCommas = true,
+            //反序列化带引号的数字
+            NumberHandling = JsonNumberHandling.AllowReadingFromString,
+            //处理循环引用
+            ReferenceHandler = ReferenceHandler.IgnoreCycles,
+            //中文字符转义
+            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            //格式化输出
+            WriteIndented = true,
+            //元数据处理器
+            TypeInfoResolver = new DefaultJsonTypeInfoResolver(),
+            Converters =
+            {
+                new FlexibleEnumConverter(),
+                new DateTimeConverter(),
+                new NullableDateTimeConverter()
+            }
+        };
 
         /// <summary>
         /// 重试配置选项

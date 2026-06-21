@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>9.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <PackageId>Hyz.HttpClient</PackageId>
+    <Version>0.1.5</Version>
+	<Authors>hyz</Authors>
+	<PackageId>$(AssemblyName)</PackageId>
+	<Title>$(AssemblyName)</Title>
+    <Description>优雅的HttpClient封装，支持多种HTTP方法、重试机制、熔断保护、请求头管理等特性</Description>
+    <PackageTags>HttpClient;REST;API;HTTP;Polly;Retry;CircuitBreaker;GET;POST;PUT;DELETE;PATCH</PackageTags>
+    <RepositoryUrl>https://github.com/zenghongyao/Hyz.HttpClient.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>支持GET/POST/PUT/DELETE/PATCH方法、重试机制、熔断保护、请求头管理、查询参数、请求体、参数别名、小驼峰命名、请求拦截器、证书配置、JSON反序列化等特性</PackageReleaseNotes>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Http" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Options" Version="6.0.0" />
+    <PackageReference Include="Polly" Version="8.4.0" />
+    <PackageReference Include="System.Text.Json" Version="10.0.6" />
+  </ItemGroup>
+	
+	<!-- 引入 README.md -->
+	<ItemGroup>
+		<None Include="../../README.md" Pack="true" PackagePath="\" />
+	</ItemGroup>
+</Project>

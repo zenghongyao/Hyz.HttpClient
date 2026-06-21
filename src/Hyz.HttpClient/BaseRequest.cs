@@ -1,0 +1,521 @@
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Linq.Expressions;
+using System.Net.Http;
+using System.Reflection;
+
+namespace Hyz.HttpClient
+{
+    /// <summary>
+    /// 基础HTTP请求实现
+    /// </summary>
+    /// <typeparam name="T">响应类型</typeparam>
+    public class BaseRequest<T> : IBaseRequest<T>
+        where T : class
+    {
+        private string _requestApi = string.Empty;
+        private IDictionary<string, string>? _headers;
+        private IDictionary<string, string>? _queryParameters;
+        private object? _body;
+        private bool? _preserveDictionaryKeyNaming;
+        private string? _cachedQueryParametersUrl;
+
+        /// <summary>
+        /// HTTP方法（不使用通用方法可以省略）
+        /// </summary>
+        public string Method { get; set; } = "POST";
+
+        /// <summary>
+        /// 是否保持字典参数的原始命名（单个请求级别）
+        /// </summary>
+        /// <remarks>
+        /// null: 使用全局配置 HttpClientPolicy.PreserveDictionaryKeyNaming（默认）<br/>
+        /// true: 保持字典参数的原始 key 名称<br/>
+        /// false: 字典参数转换为小驼峰命名<br/>
+        /// 注意：此配置仅影响字典方式设置的参数，实体类属性始终默认使用小驼峰命名
+        /// </remarks>
+        public bool? PreserveDictionaryKeyNaming
+        {
+            get => _preserveDictionaryKeyNaming;
+            set => _preserveDictionaryKeyNaming = value;
+        }
+
+        /// <summary>
+        /// 获取当前请求是否保持字典参数原始命名（单个请求设置优先于全局设置）
+        /// </summary>
+        private bool ShouldPreserveDictionaryKeyNaming => 
+            _preserveDictionaryKeyNaming ?? HttpClientPolicy.PreserveDictionaryKeyNaming;
+
+        /// <summary>
+        /// 获取请求API地址
+        /// </summary>
+        public string GetRequestApi()
+        {
+            return _requestApi;
+        }
+
+        /// <summary>
+        /// 简单类型集合（包含所有不需要序列化处理的基础类型）
+        /// </summary>
+        private static readonly HashSet<Type> _simpleTypes = new HashSet<Type>
+        {
+            // Primitive types
+            typeof(bool), typeof(char), typeof(sbyte), typeof(byte),
+            typeof(short), typeof(ushort), typeof(int), typeof(uint),
+            typeof(long), typeof(ulong), typeof(float), typeof(double),
+            typeof(IntPtr), typeof(UIntPtr),
+            // Common value types
+            typeof(string), typeof(decimal),
+            typeof(DateTime), typeof(DateTimeOffset), typeof(TimeSpan), typeof(Guid),
+            // Nullable variants
+            typeof(bool?), typeof(char?), typeof(sbyte?), typeof(byte?),
+            typeof(short?), typeof(ushort?), typeof(int?), typeof(uint?),
+            typeof(long?), typeof(ulong?), typeof(float?), typeof(double?),
+            typeof(DateTime?), typeof(DateTimeOffset?), typeof(TimeSpan?), typeof(Guid?)
+        };
+
+        /// <summary>
+        /// Determines whether the given type is a simple type that requires no serialization processing.
+        /// </summary>
+        /// <param name="type">The type to check</param>
+        /// <returns>True if the type is a simple type; otherwise, false.</returns>
+        private static bool IsSimpleType(Type type)
+        {
+            // Handle nullable types by checking the underlying type
+            var underlyingType = Nullable.GetUnderlyingType(type) ?? type;
+            return _simpleTypes.Contains(underlyingType);
+        }
+
+        /// <summary>
+        /// 设置请求API地址
+        /// </summary>
+        public void SetRequestApi(string? path)
+        {
+            if (!string.IsNullOrEmpty(path))
+                _requestApi = path!;
+        }
+
+        /// <summary>
+        /// 获取请求头
+        /// </summary>
+        public IDictionary<string, string>? GetHeaders()
+        {
+            return _headers;
+        }
+
+        /// <summary>
+        /// 添加单个请求头
+        /// </summary>
+        public void AddHeader(string key, string value)
+        {
+            _headers ??= new Dictionary<string, string>();
+            _headers[key] = value;
+        }
+
+        /// <summary>
+        /// 设置请求头
+        /// </summary>
+        public void SetHeaders(IDictionary<string, string>? headers)
+        {
+            if (headers == null || headers.Count == 0)
+            {
+                _headers = null;
+                return;
+            }
+
+            _headers = new Dictionary<string, string>(headers);
+        }
+
+        /// <summary>
+        /// 获取查询参数URL
+        /// </summary>
+        public string? GetQueryParametersUrl()
+        {
+            if (_cachedQueryParametersUrl != null)
+            {
+                return _cachedQueryParametersUrl;
+            }
+
+            var allQueryParameters = GetQueryParameters();
+            if (allQueryParameters != null && allQueryParameters.Count > 0)
+            {
+                var queryString = string.Join("&", allQueryParameters.Select(kvp =>
+                    $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
+
+                var separator = _requestApi.Contains('?') ? "&" : "?";
+                _cachedQueryParametersUrl = $"{separator}{queryString}";
+                return _cachedQueryParametersUrl;
+            }
+            return null;
+        }
+
+
+        /// <summary>
+        /// 检查属性是否有自定义请求参数别名特性
+        /// </summary>
+        /// <param name="property">属性信息</param>
+        /// <returns>是否有自定义特性</returns>
+        private bool HasRequestParameterAliasAttribute(System.Reflection.PropertyInfo property)
+        {
+            return property.GetCustomAttributes(typeof(RequestParameterAliasAttribute), true).Any();
+        }
+
+        /// <summary>
+        /// 获取查询参数
+        /// </summary>
+        public IDictionary<string, string>? GetQueryParameters()
+        {
+            // 创建一个字典来存储所有查询参数
+            var allQueryParameters = new Dictionary<string, string>();
+
+            // 添加通过AddQueryParameter/SetQueryParameters设置的查询参数
+            if (_queryParameters != null && _queryParameters.Count > 0)
+            {
+                foreach (var kvp in _queryParameters)
+                {
+                    var key = ShouldPreserveDictionaryKeyNaming 
+                        ? kvp.Key 
+                        : ToCamelCase(kvp.Key);
+                    allQueryParameters[key] = kvp.Value;
+                }
+            }
+
+            // 添加子类的公共属性作为查询参数
+            var properties = GetType().GetProperties();
+            var accessors = CreatePropertyAccessors(GetType());
+            
+            for (int i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+                var (propertyName, getter) = accessors[i];
+                
+                // 排除名称为Method的属性，除非它有自定义特性（允许通过别名使用）
+                if (property.Name != nameof(Method) || HasRequestParameterAliasAttribute(property))
+                {
+                    var value = getter(this);
+                    if (value != null)
+                    {
+                        // 只添加简单类型的属性作为查询参数
+                        if (IsSimpleType(value.GetType()))
+                        {
+                            // 只有当该属性还没有在查询参数中时才添加
+                            if (!allQueryParameters.ContainsKey(propertyName))
+                            {
+                                allQueryParameters[propertyName] = value.ToString()!;
+                            }
+                        }
+                    }
+                }
+            }
+
+            return allQueryParameters.Count > 0 ? allQueryParameters : null;
+        }
+
+        /// <summary>
+        /// 添加单个查询参数
+        /// </summary>
+        /// <remarks>添加的参数会与子类的属性合并，显式设置的参数优先级高于子类属性</remarks>
+        public void AddQueryParameter(string key, string value)
+        {
+            _queryParameters ??= new Dictionary<string, string>();
+            _queryParameters[key] = value;
+            _cachedQueryParametersUrl = null;
+        }
+
+        /// <summary>
+        /// 设置查询参数
+        /// </summary>
+        /// <remarks>设置的参数会与现有的查询参数合并，显式设置的参数优先级高于现有参数</remarks>
+        public void SetQueryParameters(IDictionary<string, string>? parameters)
+        {
+            if (parameters == null || parameters.Count == 0)
+            {
+                _queryParameters = null;
+                _cachedQueryParametersUrl = null;
+                return;
+            }
+
+            // 如果现有查询参数不为空，合并参数
+            if (_queryParameters != null && _queryParameters.Count > 0)
+            {
+                foreach (var kvp in parameters)
+                {
+                    _queryParameters[kvp.Key] = kvp.Value;
+                }
+            }
+            else
+            {
+                // 如果现有查询参数为空，直接设置
+                _queryParameters = new Dictionary<string, string>(parameters);
+            }
+            _cachedQueryParametersUrl = null;
+        }
+
+        /// <summary>
+        /// 属性访问器缓存（线程安全）
+        /// </summary>
+        private static readonly ConcurrentDictionary<Type, List<(string Name, Func<object, object> Getter)>> _propertyAccessors = new ConcurrentDictionary<Type, List<(string Name, Func<object, object> Getter)>>();
+
+        /// <summary>
+        /// 获取属性的自定义别名
+        /// </summary>
+        /// <param name="property">属性信息</param>
+        /// <returns>自定义别名，如果没有则返回小驼峰命名的属性名</returns>
+        private string GetPropertyAlias(System.Reflection.PropertyInfo property)
+        {
+            var attribute = property.GetCustomAttributes(typeof(RequestParameterAliasAttribute), true)        
+                .FirstOrDefault() as RequestParameterAliasAttribute;
+            
+            if (attribute != null)
+            {
+                return attribute.Alias;
+            }
+            
+            return ToCamelCase(property.Name);
+        }
+
+        /// <summary>
+        /// 将字符串转换为小驼峰命名
+        /// </summary>
+        /// <param name="name">原始名称</param>
+        /// <returns>小驼峰命名的字符串</returns>
+        private static string ToCamelCase(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return name;
+            }
+
+            if (char.IsLower(name[0]))
+            {
+                return name;
+            }
+
+            var chars = name.ToCharArray();
+            chars[0] = char.ToLowerInvariant(chars[0]);
+            return new string(chars);
+        }
+
+        /// <summary>
+        /// 为类型创建属性访问器
+        /// </summary>
+        /// <param name="type">类型</param>
+        /// <returns>属性名称和访问器的列表</returns>
+        private List<(string Name, Func<object, object> Getter)> CreatePropertyAccessors(Type type)
+        {
+            return _propertyAccessors.GetOrAdd(type, t =>
+            {
+                var accessorList = new List<(string Name, Func<object, object> Getter)>();
+                var properties = t.GetProperties();
+
+                foreach (var property in properties)
+                {
+                    var propertyAlias = GetPropertyAlias(property);
+                    var getter = CreatePropertyGetter(property);
+                    accessorList.Add((propertyAlias, getter));
+                }
+
+                return accessorList;
+            });
+        }
+
+        /// <summary>
+        /// 为属性创建访问器委托
+        /// </summary>
+        /// <param name="property">属性信息</param>
+        /// <returns>属性访问器委托</returns>
+        private Func<object, object> CreatePropertyGetter(PropertyInfo property)
+        {
+            var instance = Expression.Parameter(typeof(object), "instance");
+            var cast = Expression.Convert(instance, property.DeclaringType!);
+            var propertyAccess = Expression.Property(cast, property);
+            var convertResult = Expression.Convert(propertyAccess, typeof(object));
+            var lambda = Expression.Lambda<Func<object, object>>(convertResult, instance);
+            return lambda.Compile();
+        }
+
+        /// <summary>
+        /// Processes an object and returns a dictionary representation for serialization.
+        /// Handles nested objects, arrays, collections, and preserves property aliases.
+        /// </summary>
+        /// <param name="obj">The object to process</param>
+        /// <returns>A dictionary or array representation of the object</returns>
+        private object? ProcessObject(object? obj)
+        {
+            if (obj == null)
+            {
+                return null;
+            }
+
+            var objType = obj.GetType();
+
+            // 如果是SimpleType，不需要序列化处理
+            if (IsSimpleType(objType))
+            {
+                return obj;
+            }
+
+            // 如果是Dictionary，生成原始位置结构体存储分区统计信息
+            if (obj is IDictionary<string, object> dict)
+            {
+                var result = new Dictionary<string, object>();
+                foreach (var kvp in dict)
+                {
+                    var key = ShouldPreserveDictionaryKeyNaming 
+                        ? kvp.Key 
+                        : ToCamelCase(kvp.Key);
+                    result[key] = ProcessObject(kvp.Value)!;
+                }
+                return result;
+            }
+
+            // 如果是Array或类型，结构体存储分区统计信息
+            if (objType.IsArray)
+            {
+                var array = (Array)obj;
+                var result = new object[array.Length];
+                for (int i = 0; i < array.Length; i++)
+                {
+                    result[i] = ProcessObject(array.GetValue(i))!;
+                }
+                return result;
+            }
+
+            // 如果是List或类型，结构体存储分区统计信息
+            if (typeof(IEnumerable<object>).IsAssignableFrom(objType))
+            {
+                var enumerable = (IEnumerable<object>)obj;
+                return enumerable.Select(item => ProcessObject(item)).ToArray();
+            }
+
+            // 如果是class或类型，结构体存储分区统计信息
+            var resultDict = new Dictionary<string, object?>();
+            var properties = objType.GetProperties();
+            var accessors = CreatePropertyAccessors(objType);
+            
+            for (int i = 0; i < properties.Length; i++)
+            {
+                var property = properties[i];
+                var (propertyName, getter) = accessors[i];
+                
+                // 只排除名称为Method的属性，除非它有自定义特性（允许通过别名使用）
+                if (property.Name != nameof(Method) || HasRequestParameterAliasAttribute(property))
+                {
+                    var value = getter(obj);
+                    if (value != null)
+                    {
+                        resultDict[propertyName] = ProcessObject(value);
+                    }
+                }
+            }
+
+            return resultDict;
+        }
+
+        /// <summary>
+        /// 获取请求体内容
+        /// </summary>
+        public object? GetBody()
+        {
+            if (_body == null)
+            {
+                // 如果没有通过SetBody()设置请求体，返回当前实例（包含子类的属性）
+                var processedBody = ProcessObject(this);
+                var bodyDict = processedBody as Dictionary<string, object>;
+                // 不再自动移除Method键，因为ProcessObject已经处理了排除逻辑
+                return bodyDict?.Count > 0 ? bodyDict : null;
+            }
+            else if (this != _body && (IsAnonymousType(_body.GetType()) || _body is IDictionary<string, object>))
+            {
+                // 检查是否有公共属性（包括通过别名设置为Method的属性）
+                bool hasProperties = false;
+                var accessors = CreatePropertyAccessors(GetType());
+                var properties = GetType().GetProperties();
+                
+                for (int i = 0; i < properties.Length; i++)
+                {
+                    var property = properties[i];
+                    var (propertyName, getter) = accessors[i];
+                    
+                    // 检查所有属性，包括通过别名设置为Method的属性
+                    if (property.Name != nameof(Method) || HasRequestParameterAliasAttribute(property))
+                    {
+                        if (getter(this) != null)
+                        {
+                            hasProperties = true;
+                            break;
+                        }
+                    }
+                }
+
+                // 如果没有属性，直接返回处理后的请求体
+                if (!hasProperties)
+                {
+                    return ProcessObject(_body);
+                }
+
+                // 如果有属性，尝试合并
+                // 创建一个新的字典来存储合并后的属性
+                var mergedBody = new Dictionary<string, object>();
+
+                // 添加当前实例的所有公共属性
+                var currentBody = ProcessObject(this) as Dictionary<string, object>;
+                if (currentBody != null)
+                {
+                    // 不再自动移除Method键，因为ProcessObject已经处理了排除逻辑
+                    foreach (var kvp in currentBody)
+                    {
+                        mergedBody[kvp.Key] = kvp.Value;
+                    }
+                }
+
+                // 如果是字典，直接添加所有键值对
+                if (_body is IDictionary<string, object> dict)
+                {
+                    foreach (var kvp in dict)
+                    {
+                        var key = ShouldPreserveDictionaryKeyNaming 
+                            ? kvp.Key 
+                            : ToCamelCase(kvp.Key);
+                        mergedBody[key] = ProcessObject(kvp.Value)!;
+                    }
+                }
+                // 如果是匿名对象，获取所有公共属性
+                else
+                {
+                    var bodyProcessed = ProcessObject(_body);
+                    if (bodyProcessed is Dictionary<string, object> bodyDict)
+                    {
+                        foreach (var kvp in bodyDict)
+                        {
+                            mergedBody[kvp.Key] = kvp.Value;
+                        }
+                    }
+                }
+
+                return mergedBody;
+            }
+
+            // 如果通过SetBody()设置了请求体，并且不是匿名对象或字典，直接返回该请求体
+            return ProcessObject(_body);
+        }
+
+        /// <summary>
+        /// 判断类型是否为匿名类型
+        /// </summary>
+        private static bool IsAnonymousType(Type type)
+        {
+            return type.Namespace == null && type.IsSealed && type.IsClass && type.Name.Contains("AnonymousType");
+        }
+
+        /// <summary>
+        /// 设置请求体内容
+        /// </summary>
+        public void SetBody(object? body)
+        {
+            _body = body;
+        }
+    }
+}

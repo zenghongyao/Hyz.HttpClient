@@ -18,6 +18,8 @@
 - 🐫 **参数命名控制**：支持小驼峰命名自动转换，字典参数可独立控制命名方式
 - 🔍 **请求拦截器**：支持请求前后的AOP拦截，可用于日志记录、请求验证、性能监控等场景
 - 🔐 **证书配置**：支持HTTPS证书验证、客户端证书、自定义证书验证回调等
+- 📤 **文件上传**：支持单文件、多文件上传，支持进度回调，自动识别文件 MIME 类型
+- 📥 **文件下载**：支持保存到文件、返回 Stream，支持断点续传，支持进度回调
 
 ## 📦 安装
 
@@ -778,6 +780,383 @@ services.AddHyzHttpClient("SecureApiClient",
 | `ClientCertificates` | X509CertificateCollection | 客户端证书集合 |
 | `SslProtocols` | SslProtocols? | SSL 协议版本 |
 
+### 文件上传
+
+支持单文件、多文件上传，支持进度回调和表单数据。
+
+#### 单文件上传
+
+```csharp
+// 方式1：使用文件路径
+var uploadResult = await _httpClientRequest.ExecuteUploadAsync(
+    "/api/upload",
+    "path/to/file.jpg",
+    progress =>
+    {
+        Console.WriteLine($"上传进度: {progress.Percentage:F1}%, 速度: {progress.SpeedKBps:F1} KB/s");
+    });
+
+// 方式2：使用 Stream
+using var stream = File.OpenRead("path/to/file.pdf");
+var uploadResult = await _httpClientRequest.ExecuteUploadAsync(
+    "/api/upload",
+    stream,
+    "document.pdf",
+    "application/pdf",
+    progress =>
+    {
+        Console.WriteLine($"已上传: {progress.BytesSent}/{progress.TotalBytes}");
+    });
+```
+
+#### 多文件上传
+
+```csharp
+var files = new List<FileParameter>
+{
+    new FileParameter("path/to/image1.jpg"),
+    new FileParameter("path/to/image2.png"),
+    new FileParameter("path/to/document.pdf", "application/pdf")
+};
+
+var uploadResult = await _httpClientRequest.ExecuteUploadAsync(
+    "/api/upload/batch",
+    files,
+    progress =>
+    {
+        Console.WriteLine($"批量上传进度: {progress.Percentage:F1}%");
+    });
+```
+
+#### 上传带表单数据
+
+```csharp
+var fileParams = new List<FileParameter>
+{
+    new FileParameter("path/to/file.jpg")
+};
+
+var formData = new Dictionary<string, string>
+{
+    { "title", "My File" },
+    { "description", "This is a test file" },
+    { "category", "images" }
+};
+
+var uploadResult = await _httpClientRequest.ExecuteUploadAsync(
+    "/api/upload/with-data",
+    fileParams,
+    formData,
+    progress =>
+    {
+        Console.WriteLine($"上传进度: {progress.Percentage:F1}%");
+    });
+```
+
+#### FileParameter 类
+
+用于封装文件信息，支持多种构造方式：
+
+```csharp
+// 从文件路径创建
+var file1 = new FileParameter("path/to/file.jpg");
+
+// 从文件路径和自定义 MIME 类型创建
+var file2 = new FileParameter("path/to/file.pdf", "application/pdf");
+
+// 从 Stream 创建
+var file3 = new FileParameter(stream, "document.pdf", "application/pdf");
+
+// 从 byte[] 创建
+var file4 = new FileParameter(bytes, "data.bin", "application/octet-stream");
+```
+
+#### UploadProgress 进度信息
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `BytesSent` | long | 已发送字节数 |
+| `TotalBytes` | long | 总字节数 |
+| `Percentage` | double | 进度百分比（0-100） |
+| `SpeedKBps` | double | 上传速度（KB/s） |
+| `Status` | UploadStatus | 当前上传状态 |
+
+### 上传断点续传
+
+支持分片上传，自动检测已上传的分片，失败时只重新上传失败部分。需要服务器端支持分片上传 API。
+
+#### 使用步骤
+
+1. **创建上传上下文**
+2. **配置分片上传提供者**
+3. **执行断点续传上传**
+
+#### 基本示例
+
+```csharp
+// 创建上传上下文（支持文件路径或 Stream）
+var context = new UploadContext("path/to/largefile.zip");
+context.ChunkSize = 2 * 1024 * 1024; // 2MB 分片大小
+
+// 创建 HttpClient 和上传提供者
+var httpClient = new HttpClient();
+httpClient.BaseAddress = new Uri("https://api.example.com");
+
+var options = new ResumableUploadOptions
+{
+    CreateSessionUrlFormat = "/api/upload/create",
+    UploadPartUrlFormat = "/api/upload/{0}/parts/{1}",
+    ListPartsUrlFormat = "/api/upload/{0}/parts",
+    CompleteUploadUrlFormat = "/api/upload/{0}/complete",
+    AbortUploadUrlFormat = "/api/upload/{0}/abort"
+};
+
+var provider = new ResumableUploadProvider(httpClient, options);
+
+// 执行断点续传上传
+var result = await _httpClientRequest.ExecuteResumableUploadAsync<UploadResult>(
+    context,
+    provider,
+    progress =>
+    {
+        Console.WriteLine($"上传进度: {progress.Percentage:F1}%");
+        Console.WriteLine($"状态: {context.Status}");
+        Console.WriteLine($"已上传: {context.BytesUploaded}/{context.FileSize}");
+    });
+
+if (context.Status == UploadStatus.Completed)
+{
+    Console.WriteLine("上传完成!");
+}
+```
+
+#### 断点续传原理
+
+```
+1. 创建上传会话 → POST /api/upload/create → 返回 uploadId
+2. 列出已上传分片 → GET /api/upload/{uploadId}/parts → 获取已上传的分片列表
+3. 上传未完成的分片 → PUT /api/upload/{uploadId}/parts/{partNumber} → 逐个上传
+4. 完成上传 → POST /api/upload/{uploadId}/complete → 合并分片
+```
+
+#### 暂停和恢复上传
+
+```csharp
+// 暂停上传
+context.Pause();
+
+// 恢复上传（会自动跳过已上传的分片）
+var result = await _httpClientRequest.ExecuteResumableUploadAsync<UploadResult>(context, provider);
+```
+
+#### 上传上下文 UploadContext
+
+**属性**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `FilePath` | string | 文件路径 |
+| `Stream` | Stream | 文件流 |
+| `FileName` | string | 文件名 |
+| `FileSize` | long | 文件大小 |
+| `LastModified` | DateTime | 文件最后修改时间 |
+| `UploadId` | string | 客户端上传ID |
+| `ServerUploadId` | string | 服务器上传会话ID |
+| `ChunkSize` | int | 分片大小（默认 1MB） |
+| `TotalParts` | int | 总分片数 |
+| `UploadedParts` | ISet\<int\> | 已上传的分片编号 |
+| `Status` | UploadStatus | 当前状态 |
+| `BytesUploaded` | long | 已上传字节数（线程安全） |
+| `Exception` | Exception | 上传过程中发生的异常 |
+| `ConcurrentThreads` | int | 并发线程数（默认 3） |
+
+**方法**
+
+| 方法 | 说明 |
+|------|------|
+| `MarkPartUploaded(int partNumber)` | 标记指定分片已上传（线程安全） |
+| `IsPartUploaded(int partNumber)` | 检查指定分片是否已上传（线程安全） |
+| `GetUploadedPartCount()` | 获取已上传的分片数量（线程安全） |
+| `GetProgressPercentage()` | 获取上传进度百分比（0-100） |
+| `IsComplete()` | 检查上传是否已完成 |
+| `Pause()` | 暂停上传（仅当状态为 Uploading 时有效） |
+| `Cancel()` | 取消上传 |
+| `GetCancellationToken()` | 获取取消令牌，用于取消上传操作 |
+| `Reset()` | 重置上传上下文状态，可用于重新开始上传 |
+| `Dispose()` | 释放资源 |
+
+#### 分片上传提供者 IResumableUploadProvider
+
+接口定义了分片上传的核心操作：
+
+| 方法 | 说明 |
+|------|------|
+| `CreateUploadSessionAsync(string fileName, long fileSize, string? contentType, CancellationToken)` | 创建上传会话，返回服务器上传ID |
+| `UploadPartAsync(string uploadId, int partNumber, byte[] data, long offset, long totalSize, CancellationToken)` | 上传单个分片，返回包含 ETag 的上传结果 |
+| `ListUploadedPartsAsync(string uploadId, CancellationToken)` | 列出已上传的分片信息 |
+| `CompleteUploadAsync<T>(string uploadId, IList<UploadPartInfo> parts, CancellationToken)` | 完成上传（合并分片），返回服务器响应 |
+| `AbortUploadAsync(string uploadId, CancellationToken)` | 取消上传，清理服务器上的临时分片 |
+
+#### 默认实现 ResumableUploadProvider
+
+`ResumableUploadProvider` 是 `IResumableUploadProvider` 的默认实现，基于 HTTP REST API 进行分片上传。
+
+**构造函数**
+
+```csharp
+var provider = new ResumableUploadProvider(httpClient, options, logger);
+```
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `httpClient` | HttpClient | HTTP 客户端（必需） |
+| `options` | ResumableUploadOptions | 上传选项（可选） |
+| `logger` | ILogger | 日志记录器（可选） |
+
+#### 分片上传选项 ResumableUploadOptions
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `CreateSessionUrlFormat` | string | `/api/upload/create` | 创建上传会话的 URL 格式，{0} 会被替换为文件名 |
+| `UploadPartUrlFormat` | string | `/api/upload/{0}/parts/{1}` | 上传分片的 URL 格式，{0} = uploadId，{1} = partNumber |
+| `ListPartsUrlFormat` | string | `/api/upload/{0}/parts` | 列出已上传分片的 URL 格式，{0} = uploadId |
+| `CompleteUploadUrlFormat` | string | `/api/upload/{0}/complete` | 完成上传的 URL 格式，{0} = uploadId |
+| `AbortUploadUrlFormat` | string | `/api/upload/{0}/abort` | 取消上传的 URL 格式，{0} = uploadId |
+| `PartContentType` | string | `application/octet-stream` | 分片内容类型 |
+| `MaxRetryAttempts` | int | 3 | 最大重试次数 |
+| `RetryDelay` | TimeSpan | 1 秒 | 重试延迟时间 |
+
+#### 分片信息类
+
+**UploadPartResult（分片上传结果）**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `PartNumber` | int | 分片编号 |
+| `ETag` | string | 服务器返回的 ETag，用于验证分片完整性 |
+| `Success` | bool | 是否上传成功 |
+| `ErrorMessage` | string | 错误消息（如果上传失败） |
+
+**UploadPartInfo（分片信息）**
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `PartNumber` | int | 分片编号 |
+| `ETag` | string | 服务器返回的 ETag |
+| `Size` | long | 分片大小（字节） |
+
+#### 自定义上传提供者
+
+你可以实现 `IResumableUploadProvider` 接口来适配不同的云存储服务：
+
+```csharp
+public class OssResumableUploadProvider : IResumableUploadProvider
+{
+    public async Task<string> CreateUploadSessionAsync(string fileName, long fileSize, string? contentType = null, CancellationToken cancellationToken = default)
+    {
+        // 调用阿里云 OSS 的 InitiateMultipartUpload API
+    }
+
+    public async Task<UploadPartResult> UploadPartAsync(string uploadId, int partNumber, byte[] data, long offset, long totalSize, CancellationToken cancellationToken = default)
+    {
+        // 调用阿里云 OSS 的 UploadPart API
+    }
+
+    // ... 其他方法
+}
+```
+
+#### UploadStatus 状态枚举
+
+| 值 | 说明 |
+|----|------|
+| `Waiting` | 等待上传 |
+| `Uploading` | 上传中 |
+| `Paused` | 已暂停 |
+| `Cancelled` | 已取消 |
+| `Completed` | 已完成 |
+| `Failed` | 失败 |
+
+### 文件下载
+
+支持保存到文件、返回 Stream，支持断点续传。
+
+#### 下载到文件
+
+```csharp
+var downloadResult = await _httpClientRequest.ExecuteDownloadAsync(
+    "https://example.com/files/large.zip",
+    "path/to/save/large.zip",
+    progress =>
+    {
+        Console.WriteLine($"下载进度: {progress.Percentage:F1}%, 速度: {progress.SpeedKBps:F1} KB/s");
+    });
+
+Console.WriteLine($"下载完成! 文件大小: {downloadResult.TotalBytes} bytes");
+```
+
+#### 下载返回 Stream
+
+```csharp
+using var stream = await _httpClientRequest.ExecuteDownloadStreamAsync(
+    "https://example.com/files/image.jpg",
+    progress =>
+    {
+        Console.WriteLine($"已下载: {progress.BytesReceived}/{progress.TotalBytes}");
+    });
+
+// 使用 stream...
+```
+
+#### 断点续传
+
+断点续传会自动检测服务器是否支持 `Accept-Ranges`，如果支持则从上次中断的位置继续下载。
+
+```csharp
+var context = new DownloadContext(
+    "https://example.com/files/large.zip",
+    "path/to/save/large.zip"
+);
+
+// 开始或继续下载
+var result = await _httpClientRequest.ExecuteResumableDownloadAsync(
+    context,
+    progress =>
+    {
+        Console.WriteLine($"下载进度: {progress.Percentage:F1}%");
+        Console.WriteLine($"状态: {context.Status}");
+    });
+
+// 暂停下载（通过 CancellationToken）
+var cts = new CancellationTokenSource();
+cts.CancelAfter(TimeSpan.FromSeconds(30)); // 30秒后暂停
+
+// 恢复下载（重新调用 ExecuteResumableDownloadAsync，会从断点继续）
+var result2 = await _httpClientRequest.ExecuteResumableDownloadAsync(context, progress => { ... });
+```
+
+#### DownloadContext 断点续传上下文
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `Url` | string | 下载地址 |
+| `SavePath` | string | 保存路径 |
+| `Status` | DownloadStatus | 当前状态（Waiting/Downloading/Paused/Cancelled/Completed/Failed） |
+| `BytesDownloaded` | long | 已下载字节数 |
+| `TotalBytes` | long | 总字节数 |
+| `ETag` | string | 服务器返回的 ETag（用于验证文件是否变化） |
+| `LastModified` | DateTime | 服务器返回的最后修改时间 |
+
+#### DownloadProgress 进度信息
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `BytesReceived` | long | 已接收字节数 |
+| `TotalBytes` | long | 总字节数 |
+| `Percentage` | double | 进度百分比（0-100） |
+| `SpeedKBps` | double | 下载速度（KB/s） |
+| `RemainingTime` | TimeSpan | 剩余时间估计 |
+
 ### HyzHttpClientFactory（无 DI 环境）
 
 `HyzHttpClientFactory` 是专门为 .NET Framework 等无依赖注入环境设计的工厂类，支持静态方法快速调用和实例化配置两种模式。
@@ -898,6 +1277,11 @@ var request = HyzHttpClientFactory.CreateInstance(logger);
 | `ExecuteDeleteAsync<T>()` | 发送 DELETE 请求 |
 | `ExecutePatchAsync<T>()` | 发送 PATCH 请求 |
 | `ExecuteAsync<T>()` | 通用方法，支持任意 HTTP 方法 |
+| `ExecuteUploadAsync()` | 文件上传（支持单文件、多文件、带表单数据） |
+| `ExecuteResumableUploadAsync()` | 断点续传上传（分片上传） |
+| `ExecuteDownloadAsync()` | 下载文件到指定路径 |
+| `ExecuteDownloadStreamAsync()` | 下载文件返回 Stream |
+| `ExecuteResumableDownloadAsync()` | 断点续传下载 |
 
 ### BaseRequest<T>
 

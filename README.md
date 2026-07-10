@@ -27,7 +27,44 @@ dotnet add package Hyz.HttpClient
 
 ## 🚀 快速开始
 
-### 1. 注册服务
+### 无依赖注入环境（.NET Framework）
+
+如果你在 .NET Framework 环境下使用，或者不想使用依赖注入，可以使用 `HyzHttpClientFactory` 工厂类，开箱即用：
+
+```csharp
+using Hyz.HttpClient;
+
+// 方式1：使用静态方法快速创建
+var httpClientRequest = HyzHttpClientFactory.CreateInstance();
+
+// 方式2：使用全局配置 + 静态方法
+HyzHttpClientFactory.Initialize(
+    baseAddress: new Uri("https://api.example.com"),
+    timeout: TimeSpan.FromSeconds(30)
+);
+var httpClientRequest = HyzHttpClientFactory.CreateInstance();
+
+// 方式3：使用实例化工厂
+var factory = new HyzHttpClientFactory(
+    baseAddress: new Uri("https://api.example.com"),
+    timeout: TimeSpan.FromSeconds(30)
+);
+var httpClientRequest = factory.Create();
+
+// 方式4：创建时指定配置（覆盖全局配置）
+var httpClientRequest = HyzHttpClientFactory.CreateInstance(
+    baseAddress: new Uri("https://custom.example.com"),
+    timeout: TimeSpan.FromSeconds(15)
+);
+
+// 方式5：创建命名客户端
+var httpClientRequest = HyzHttpClientFactory.CreateNamedInstance("MyApi", client =>
+{
+    client.DefaultRequestHeaders.Add("X-Custom-Header", "value");
+});
+```
+
+### 1. 注册服务（依赖注入环境）
 
 ```csharp
 using Hyz.HttpClient;
@@ -740,6 +777,114 @@ services.AddHyzHttpClient("SecureApiClient",
 | `ServerCertificateValidationCallback` | Func | 服务器证书验证回调 |
 | `ClientCertificates` | X509CertificateCollection | 客户端证书集合 |
 | `SslProtocols` | SslProtocols? | SSL 协议版本 |
+
+### HyzHttpClientFactory（无 DI 环境）
+
+`HyzHttpClientFactory` 是专门为 .NET Framework 等无依赖注入环境设计的工厂类，支持静态方法快速调用和实例化配置两种模式。
+
+#### 全局配置
+
+```csharp
+// 设置全局默认 BaseAddress
+HyzHttpClientFactory.GlobalBaseAddress = new Uri("https://api.example.com");
+
+// 设置全局默认超时时间
+HyzHttpClientFactory.GlobalTimeout = TimeSpan.FromSeconds(30);
+
+// 设置全局证书配置
+HyzHttpClientFactory.GlobalCertificateOptions = new CertificateOptions
+{
+    IgnoreCertificateErrors = false
+};
+
+// 一次性初始化所有全局配置
+HyzHttpClientFactory.Initialize(
+    baseAddress: new Uri("https://api.example.com"),
+    timeout: TimeSpan.FromSeconds(30),
+    certificateOptions: certificateOptions,
+    jsonOptions: jsonSerializerOptions
+);
+```
+
+#### 静态方法
+
+```csharp
+// 创建默认实例
+var request = HyzHttpClientFactory.CreateInstance();
+
+// 创建时指定配置（覆盖全局配置）
+var request = HyzHttpClientFactory.CreateInstance(
+    logger: customLogger,
+    baseAddress: new Uri("https://custom.example.com"),
+    timeout: TimeSpan.FromSeconds(15),
+    jsonOptions: customJsonOptions
+);
+
+// 创建命名客户端
+var request = HyzHttpClientFactory.CreateNamedInstance("MyApi", client =>
+{
+    client.DefaultRequestHeaders.Add("X-Custom-Header", "value");
+});
+```
+
+#### 实例方法
+
+```csharp
+var factory = new HyzHttpClientFactory();
+
+// 创建默认实例
+var request = factory.Create();
+
+// 创建时指定配置
+var request = factory.Create(
+    logger: customLogger,
+    baseAddress: new Uri("https://custom.example.com"),
+    timeout: TimeSpan.FromSeconds(15),
+    jsonOptions: customJsonOptions
+);
+
+// 创建命名客户端
+var request = factory.CreateNamedClient("MyApi", client =>
+{
+    client.DefaultRequestHeaders.Add("X-Custom-Header", "value");
+});
+```
+
+#### HyzHttpClientFactory 属性
+
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| `Instance` | `HyzHttpClientFactory` | 获取全局单例实例 |
+| `GlobalBaseAddress` | `Uri?` | 全局默认 BaseAddress |
+| `GlobalTimeout` | `TimeSpan?` | 全局默认超时时间 |
+| `GlobalCertificateOptions` | `CertificateOptions?` | 全局默认证书配置 |
+| `GlobalJsonOptions` | `JsonSerializerOptions?` | 全局默认 JSON 序列化配置 |
+
+#### HyzHttpClientFactory 方法
+
+| 方法 | 说明 |
+|------|------|
+| `Create()` | 创建 `HttpClientRequest` 实例（使用全局配置） |
+| `Create(logger)` | 创建 `HttpClientRequest` 实例（指定日志记录器） |
+| `Create(logger, baseAddress, timeout, jsonOptions)` | 创建 `HttpClientRequest` 实例（完整配置） |
+| `CreateNamedClient(name, configureClient, logger, jsonOptions)` | 创建命名客户端实例 |
+| `CreateInstance()` | 静态方法：创建 `HttpClientRequest` 实例 |
+| `CreateInstance(logger)` | 静态方法：创建 `HttpClientRequest` 实例（指定日志记录器） |
+| `CreateInstance(logger, baseAddress, timeout, jsonOptions)` | 静态方法：创建 `HttpClientRequest` 实例（完整配置） |
+| `CreateNamedInstance(name, configureClient, logger, jsonOptions)` | 静态方法：创建命名客户端实例 |
+| `Initialize(baseAddress, timeout, certificateOptions, jsonOptions)` | 静态方法：初始化全局配置 |
+
+#### 日志记录器
+
+`HyzHttpClientFactory` 默认使用 `NullLogger<HttpClientRequest>`，不会输出日志。如果需要日志，可以传入自定义的 `ILogger<HttpClientRequest>` 实现：
+
+```csharp
+// 使用控制台日志
+var logger = LoggerFactory.Create(builder => builder.AddConsole())
+    .CreateLogger<HttpClientRequest>();
+
+var request = HyzHttpClientFactory.CreateInstance(logger);
+```
 
 ## 🎯 API 参考
 

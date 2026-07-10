@@ -5,8 +5,10 @@
     <LangVersion>9.0</LangVersion>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <IncludeSourceRevisionInPackageVersion>false</IncludeSourceRevisionInPackageVersion>
+    <DeterministicSourcePaths>false</DeterministicSourcePaths>
     <PackageId>Hyz.HttpClient</PackageId>
-    <Version>0.1.6</Version>
+    <Version>0.1.7</Version>
 	<Authors>hyz</Authors>
 	<PackageId>$(AssemblyName)</PackageId>
 	<Title>$(AssemblyName)</Title>

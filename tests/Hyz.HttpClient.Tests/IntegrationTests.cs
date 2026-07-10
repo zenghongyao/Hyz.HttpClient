@@ -64,7 +64,7 @@ namespace Hyz.HttpClient.Tests
             request.AddQueryParameter("_limit", "5");
             request.AddHeader("Accept", "application/json");
 
-            var factory = new HttpClientFactory();
+            var factory = new SimpleHttpClientFactory();
             var logger = LoggerFactory.Create(builder => builder.AddConsole())
                 .CreateLogger<HttpClientRequest>();
             var jsonSerializerOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -95,7 +95,7 @@ namespace Hyz.HttpClient.Tests
             });
             request.AddHeader("Content-Type", "application/json");
 
-            var factory = new HttpClientFactory();
+            var factory = new SimpleHttpClientFactory();
             var logger = LoggerFactory.Create(builder => builder.AddConsole())
                 .CreateLogger<HttpClientRequest>();
             var jsonSerializerOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -125,7 +125,7 @@ namespace Hyz.HttpClient.Tests
 
             // Note: This is a mock example, real API would be different
             // In production, you would test against your actual API
-            var factory = new HttpClientFactory();
+            var factory = new SimpleHttpClientFactory();
             var logger = LoggerFactory.Create(builder => builder.AddConsole())
                 .CreateLogger<HttpClientRequest>();
             var jsonSerializerOptions = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
@@ -322,15 +322,7 @@ namespace Hyz.HttpClient.Tests
             public string? Email { get; set; }
         }
 
-        private class HttpClientFactory : IHttpClientFactory
-        {
-            private readonly Lazy<HttpClientType> _httpClient = new(() => new HttpClientType());
-
-            public HttpClientType CreateClient(string? name = null)
-            {
-                return _httpClient.Value;
-            }
-        }
+        
 
         #endregion
     }

@@ -140,7 +140,9 @@ namespace Hyz.HttpClient
         /// <summary>
         /// 创建HttpMessageHandler
         /// </summary>
-        private static HttpMessageHandler CreateHttpMessageHandler(CertificateOptions options)
+        /// <param name="options">证书配置选项</param>
+        /// <returns>HttpMessageHandler实例</returns>
+        public static HttpMessageHandler CreateHttpMessageHandler(CertificateOptions options)
         {
             var handler = new HttpClientHandler();
 

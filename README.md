@@ -1,6 +1,6 @@
 # Hyz.HttpClient
 
-> 优雅的 HttpClient 封装，让你的 API 调用更加丝滑！
+> 优雅的 HttpClient 封装，目标框架是 netstandard2.0 ，兼容 .NET Framework 4.6.1+ 和 .NET Core 2.0+，让你的 API 调用更加丝滑！
 
 ## ✨ 特性
 

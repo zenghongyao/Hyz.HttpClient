@@ -8,7 +8,7 @@
     <IncludeSourceRevisionInPackageVersion>false</IncludeSourceRevisionInPackageVersion>
     <DeterministicSourcePaths>false</DeterministicSourcePaths>
     <PackageId>Hyz.HttpClient</PackageId>
-    <Version>0.1.7</Version>
+    <Version>0.1.8</Version>
 	<Authors>hyz</Authors>
 	<PackageId>$(AssemblyName)</PackageId>
 	<Title>$(AssemblyName)</Title>

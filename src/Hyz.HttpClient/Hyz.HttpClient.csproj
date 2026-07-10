@@ -1,18 +1,21 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <DisableGitVersioning>true</DisableGitVersioning>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>9.0</LangVersion>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
     <IncludeSourceRevisionInPackageVersion>false</IncludeSourceRevisionInPackageVersion>
+    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <EnableGitVersioning>false</EnableGitVersioning>
     <DeterministicSourcePaths>false</DeterministicSourcePaths>
     <PackageId>Hyz.HttpClient</PackageId>
     <Version>0.1.8</Version>
 	<Authors>hyz</Authors>
 	<PackageId>$(AssemblyName)</PackageId>
 	<Title>$(AssemblyName)</Title>
-    <Description>优雅的HttpClient封装，支持多种HTTP方法、重试机制、熔断保护、请求头管理等特性</Description>
+    <Description>优雅的HttpClient封装，目标框架是 netstandard2.0 ，兼容 .NET Framework 4.6.1+ 和 .NET Core 2.0+，支持多种HTTP方法、重试机制、熔断保护、请求头管理等特性</Description>
     <PackageTags>HttpClient;REST;API;HTTP;Polly;Retry;CircuitBreaker;GET;POST;PUT;DELETE;PATCH</PackageTags>
     <RepositoryUrl>https://github.com/zenghongyao/Hyz.HttpClient.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>

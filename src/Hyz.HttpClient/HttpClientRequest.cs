@@ -1052,6 +1052,7 @@ namespace Hyz.HttpClient
                 FullUrl = httpRequest.RequestUri?.ToString() ?? string.Empty,
                 HttpMethod = request.Method,
                 Headers = request.GetHeaders(),
+                HttpRequest = httpRequest,
                 QueryParameters = request.GetQueryParameters(),
                 Body = request.GetBody(),
                 RequestTime = DateTime.UtcNow

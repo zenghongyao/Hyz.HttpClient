@@ -11,7 +11,7 @@
     <EnableGitVersioning>false</EnableGitVersioning>
     <DeterministicSourcePaths>false</DeterministicSourcePaths>
     <PackageId>Hyz.HttpClient</PackageId>
-    <Version>0.1.8</Version>
+    <Version>0.1.9</Version>
 	<Authors>hyz</Authors>
 	<PackageId>$(AssemblyName)</PackageId>
 	<Title>$(AssemblyName)</Title>

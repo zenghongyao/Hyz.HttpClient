@@ -16,7 +16,7 @@
 - 🔍 **属性自动作为查询参数**：子类的公共属性会自动作为查询参数添加到 URL 中
 - 🏷️ **请求参数别名**：支持使用特性为请求参数设置别名，灵活控制序列化名称
 - 🐫 **参数命名控制**：支持小驼峰命名自动转换，字典参数可独立控制命名方式
-- 🔍 **请求拦截器**：支持请求前后的AOP拦截，可用于日志记录、请求验证、性能监控等场景
+- 🔍 **请求拦截器**：支持请求前后的AOP拦截，可用于日志记录、请求验证、性能监控等场景；支持跨拦截器数据传递（Items）、请求头注入（HttpRequest）、分布式追踪（RequestId/TraceId）、异常隔离等高级特性
 - 🔐 **证书配置**：支持HTTPS证书验证、客户端证书、自定义证书验证回调等
 - 📤 **文件上传**：支持单文件、多文件上传，支持进度回调，自动识别文件 MIME 类型
 - 📥 **文件下载**：支持保存到文件、返回 Stream，支持断点续传，支持进度回调
@@ -616,34 +616,146 @@ private void LogResponse(ResponseInterceptionContext context)
 }
 ```
 
+#### 跨拦截器数据传递（Items）
+
+`RequestInterceptionContext.Items` 字典允许在请求前拦截器和请求后拦截器之间传递自定义数据。由于响应上下文的 `RequestContext` 引用的是同一个请求上下文对象，因此数据可以在两个拦截器间共享。
+
+```csharp
+HttpClientPolicy.OnRequestSending = context =>
+{
+    // 在请求前拦截器中存入数据
+    context.Items = new Dictionary<string, object>();
+    context.Items["RequestStartTimestamp"] = Stopwatch.GetTimestamp();
+    context.Items["CorrelationId"] = Guid.NewGuid().ToString();
+};
+
+HttpClientPolicy.OnRequestCompleted = context =>
+{
+    // 在请求后拦截器中读取数据
+    if (context.RequestContext.Items?.TryGetValue("RequestStartTimestamp", out var startObj) == true)
+    {
+        var start = (long)startObj;
+        var elapsed = Stopwatch.GetElapsedTime(start);
+        Console.WriteLine($"实际耗时: {elapsed.TotalMilliseconds}ms");
+    }
+
+    if (context.RequestContext.Items?.TryGetValue("CorrelationId", out var corrId) == true)
+    {
+        Console.WriteLine($"关联ID: {corrId}");
+    }
+};
+```
+
+#### 修改请求（HttpRequest）
+
+`RequestInterceptionContext.HttpRequest` 暴露了实际的 `HttpRequestMessage` 实例，允许在请求发送前修改请求头、注入追踪信息等。
+
+```csharp
+HttpClientPolicy.OnRequestSending = context =>
+{
+    // 注入 W3C traceparent 头（链路追踪标准）
+    context.HttpRequest?.Headers.TryAddWithoutValidation(
+        "traceparent",
+        $"00-{context.TraceId}-0000000000000000-01");
+
+    // 注入自定义请求头
+    context.HttpRequest?.Headers.TryAddWithoutValidation(
+        "X-Correlation-Id",
+        context.RequestId);
+};
+```
+
+> **注意**：`HttpRequest` 仅在 `OnRequestSending` 拦截器中可修改。请求发送后不应再修改。
+
+#### 分布式追踪（RequestId / TraceId）
+
+每个请求上下文会自动生成 `RequestId` 和 `TraceId`，用于分布式追踪和日志关联：
+
+- **RequestId**：每次请求自动生成的唯一标识（GUID 的 N 格式），在请求前和请求后拦截器中保持一致
+- **TraceId**：分布式追踪 ID，优先复用 `Activity.Current?.Id`（支持 W3C TraceContext 标准），否则自动生成。外部链路追踪系统（如 Zipkin/Jaeger）可据此关联调用链
+
+```csharp
+HttpClientPolicy.OnRequestSending = context =>
+{
+    Console.WriteLine($"[请求] RequestId={context.RequestId}, TraceId={context.TraceId}");
+};
+
+HttpClientPolicy.OnRequestCompleted = context =>
+{
+    // RequestId 和 TraceId 从请求上下文自动传递到响应上下文
+    Console.WriteLine($"[响应] RequestId={context.RequestId}, TraceId={context.TraceId}, 耗时={context.Duration.TotalMilliseconds}ms");
+};
+```
+
+#### 异常隔离机制
+
+拦截器内的异常**不会**中断正常请求流程，框架会捕获拦截器异常并记录为警告日志：
+
+- `OnRequestSending` 抛出异常 → 请求仍会正常发送
+- `OnRequestCompleted` 抛出异常 → 响应仍会正常返回给调用方
+- 即使 `OnRequestSending` 抛出异常，`OnRequestCompleted` 仍会被调用（在 `finally` 块中）
+- 即使请求失败抛出异常，`OnRequestCompleted` 仍会被调用并捕获异常信息
+
+```csharp
+HttpClientPolicy.OnRequestSending = context =>
+{
+    // 这里的异常不会中断请求
+    if (string.IsNullOrEmpty(context.FullUrl))
+    {
+        throw new InvalidOperationException("请求地址为空");
+    }
+    // 即使上面抛出异常，请求仍会继续发送
+};
+```
+
+> **最佳实践**：虽然框架会吞掉拦截器异常，但建议在拦截器内部使用 try/catch 处理预期异常，避免日志被警告信息淹没。
+
+#### 清除拦截器
+
+`HttpClientPolicy.ClearInterceptors()` 方法可清除所有已注册的拦截器，用于应用退出或测试清理：
+
+```csharp
+// 清除所有拦截器（幂等，多次调用安全）
+HttpClientPolicy.ClearInterceptors();
+
+// 清除后 OnRequestSending 和 OnRequestCompleted 均为 null
+// 请求会正常执行，只是不再触发拦截器回调
+```
+
 #### 请求上下文属性
 
 **RequestInterceptionContext（请求上下文）**
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
+| `RequestId` | string | 请求唯一标识符（自动生成，跨拦截器保持一致） |
+| `TraceId` | string | 分布式追踪 ID（优先复用 `Activity.Current?.Id`，否则自动生成） |
 | `RequestApi` | string | 请求API地址 |
 | `FullUrl` | string | 完整请求URL（包含查询参数） |
 | `HttpMethod` | string | HTTP方法 |
 | `Headers` | IDictionary | 请求头 |
+| `HttpRequest` | HttpRequestMessage | 当前 HTTP 请求消息实例（请求发送前可修改，用于注入头等） |
 | `QueryParameters` | IDictionary | 查询参数 |
 | `Body` | object | 请求体对象 |
 | `BodyJson` | string | 请求体JSON字符串 |
-| `RequestTime` | DateTime | 请求时间 |
-| `Items` | IDictionary | 自定义数据 |
+| `RequestTime` | DateTime | 请求时间（UTC） |
+| `Items` | IDictionary | 自定义数据字典（跨拦截器共享，通过 `RequestContext` 引用传递） |
 
 **ResponseInterceptionContext（响应上下文）**
 
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| `RequestContext` | RequestInterceptionContext | 请求上下文 |
-| `ResponseMessage` | HttpResponseMessage | HTTP响应消息 |
+| `RequestId` | string | 请求唯一标识符（从请求上下文传递） |
+| `TraceId` | string | 分布式追踪 ID（从请求上下文传递） |
+| `RequestContext` | RequestInterceptionContext | 请求上下文（同一引用，可访问 Items 等数据） |
+| `ResponseHeaders` | HttpResponseHeaders | 响应头 |
+| `ReasonPhrase` | string | 响应状态描述 |
 | `StatusCode` | int | 响应状态码 |
 | `IsSuccess` | bool | 是否成功 |
 | `ResponseContent` | string | 响应内容 |
-| `ResponseTime` | DateTime | 响应时间 |
+| `ResponseTime` | DateTime | 响应时间（UTC） |
 | `Duration` | TimeSpan | 请求耗时 |
-| `Exception` | Exception | 异常信息 |
+| `Exception` | Exception | 异常信息（请求失败时捕获，含 HttpRequestException 等） |
 
 ### 证书配置
 
@@ -1327,26 +1439,32 @@ var request = HyzHttpClientFactory.CreateInstance(logger);
 
 | 属性 | 说明 |
 |------|------|
+| `RequestId` | 请求唯一标识符（自动生成，跨拦截器保持一致） |
+| `TraceId` | 分布式追踪 ID（优先复用 `Activity.Current?.Id`） |
 | `RequestApi` | 请求API地址 |
 | `FullUrl` | 完整请求URL（包含查询参数） |
 | `HttpMethod` | HTTP方法 |
 | `Headers` | 请求头字典 |
+| `HttpRequest` | 当前 HTTP 请求消息实例（请求发送前可修改） |
 | `QueryParameters` | 查询参数字典 |
 | `Body` | 请求体对象 |
 | `BodyJson` | 请求体JSON字符串 |
-| `RequestTime` | 请求时间 |
-| `Items` | 自定义数据字典 |
+| `RequestTime` | 请求时间（UTC） |
+| `Items` | 自定义数据字典（跨拦截器共享） |
 
 ### ResponseInterceptionContext
 
 | 属性 | 说明 |
 |------|------|
-| `RequestContext` | 请求上下文 |
-| `ResponseMessage` | HTTP响应消息 |
+| `RequestId` | 请求唯一标识符（从请求上下文传递） |
+| `TraceId` | 分布式追踪 ID（从请求上下文传递） |
+| `RequestContext` | 请求上下文（同一引用，可访问 Items 等数据） |
+| `ResponseHeaders` | 响应头 |
+| `ReasonPhrase` | 响应状态描述 |
 | `StatusCode` | 响应状态码 |
 | `IsSuccess` | 是否成功 |
 | `ResponseContent` | 响应内容 |
-| `ResponseTime` | 响应时间 |
+| `ResponseTime` | 响应时间（UTC） |
 | `Duration` | 请求耗时 |
 | `Exception` | 异常信息（如果请求失败） |
 

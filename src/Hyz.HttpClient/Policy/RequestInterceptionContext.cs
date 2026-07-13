@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net.Http;
 
 namespace Hyz.HttpClient
 {
@@ -41,6 +42,15 @@ namespace Hyz.HttpClient
         /// 请求头
         /// </summary>
         public IDictionary<string, string>? Headers { get; set; }
+
+        /// <summary>
+        /// 当前 HTTP 请求消息实例（请求发送前可修改，用于注入 traceparent 等头）
+        /// </summary>
+        /// <remarks>
+        /// 在 <c>OnRequestSending</c> 拦截器中可用，允许拦截器直接操作实际请求头。
+        /// 此引用在请求发送前有效，请求发送后不应再修改。
+        /// </remarks>
+        public HttpRequestMessage? HttpRequest { get; set; }
 
         /// <summary>
         /// 查询参数

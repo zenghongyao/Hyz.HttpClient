@@ -58,8 +58,10 @@ namespace Hyz.HttpClient
             }
             else
             {
-                services.AddHttpClient(httpClientName!, configureClient)
-                    .ConfigurePrimaryHttpMessageHandler(() => CreateHttpMessageHandler(certificateOptions));
+                var clientBuilder = configureClient != null
+                    ? services.AddHttpClient(httpClientName!, configureClient)
+                    : services.AddHttpClient(httpClientName!);
+                clientBuilder.ConfigurePrimaryHttpMessageHandler(() => CreateHttpMessageHandler(certificateOptions));
             }
 
             // 创建JsonSerializerOptions实例（克隆默认选项，避免共享引用导致线程安全问题）
@@ -116,8 +118,10 @@ namespace Hyz.HttpClient
                 };
             }
 
-            services.AddHttpClient(httpClientName, configureClient)
-                .ConfigurePrimaryHttpMessageHandler(() => CreateHttpMessageHandler(certificateOptions));
+            var clientBuilder = configureClient != null
+                ? services.AddHttpClient(httpClientName, configureClient)
+                : services.AddHttpClient(httpClientName);
+            clientBuilder.ConfigurePrimaryHttpMessageHandler(() => CreateHttpMessageHandler(certificateOptions));
 
             // 创建JsonSerializerOptions实例（克隆默认选项，避免共享引用导致线程安全问题）
             var jsonSerializerOptions = new JsonSerializerOptions(HttpClientPolicy.DefaultJsonOptions);

@@ -60,7 +60,7 @@ namespace Hyz.HttpClient
             
             if (!string.IsNullOrWhiteSpace(contentType))
             {
-                body["contentType"] = contentType;
+                body["contentType"] = contentType!;
             }
 
             request.Content = new StringContent(JsonSerializer.Serialize(body, _jsonOptions), Encoding.UTF8, "application/json");

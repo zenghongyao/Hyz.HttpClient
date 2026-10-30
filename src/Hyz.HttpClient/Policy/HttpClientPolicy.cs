@@ -8,6 +8,7 @@ using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using System.Text.Unicode;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -117,8 +118,8 @@ namespace Hyz.HttpClient
             NumberHandling = JsonNumberHandling.AllowReadingFromString,
             //处理循环引用
             ReferenceHandler = ReferenceHandler.IgnoreCycles,
-            //中文字符转义
-            Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+            //允许所有 Unicode 字符原样输出
+            Encoder = JavaScriptEncoder.Create(UnicodeRanges.All),
             //格式化输出
             WriteIndented = true,
             //元数据处理器

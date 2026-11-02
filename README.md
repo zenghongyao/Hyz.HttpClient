@@ -309,6 +309,29 @@ public async Task<UserResponse?> GetUserAsync(string username, int age)
 
 ### 配置重试策略
 
+普通请求（`ExecuteAsync` 及 GET、POST、PUT、DELETE、PATCH 入口）默认关闭自动重试。可通过全局配置修改默认行为，单次请求的 `enableRetry` 参数优先于全局配置。
+
+```csharp
+// 默认值为 false，建议在应用启动时统一配置
+HttpClientPolicy.EnableRetryByDefault = false;
+
+// 可选：全局默认开启重试
+HttpClientPolicy.EnableRetryByDefault = true;
+```
+
+| 全局配置 | 单次 enableRetry | 实际行为 |
+| --- | --- | --- |
+| false（默认） | 省略或 null | 关闭重试 |
+| true | 省略或 null | 启用重试 |
+| 任意值 | true | 启用重试 |
+| 任意值 | false | 关闭重试 |
+
+`ConfigureRetry` 仅配置重试次数、延迟等策略参数，不会自动开启请求重试。当前重试与熔断共用管道，关闭重试时也会绕过熔断。
+
+此全局配置不适用于文件传输接口。上传和下载接口现有的 `enableRetry` 参数没有接入该策略管道，显式传入 `true` 也不会启用该管道。
+
+兼容性说明：普通请求的 `enableRetry` 参数由 `bool` 调整为 `bool?`，默认值为 `null`，表示使用全局配置。公开方法签名发生变化，升级后调用方需要重新编译。
+
 ```csharp
 using Hyz.HttpClient;
 
@@ -424,10 +447,19 @@ request.SetQueryParameters(queryParams);
 // URL 自动拼接为：/api/users?page=1&pageSize=20&status=active
 ```
 
-### 禁用重试
+### 按请求控制重试
 
 ```csharp
-// 对于非幂等性操作，可以禁用重试
+// 省略参数时使用全局默认值，初始配置下不重试
+var result = await _httpClientService.ExecuteGetAsync<GetUserResponse>(request);
+
+// 对允许重试的请求显式开启
+var retriedResult = await _httpClientService.ExecuteGetAsync<GetUserResponse>(
+    request,
+    enableRetry: true
+);
+
+// 单次请求可显式关闭重试，即使全局配置为 true
 var response = await _httpClientService.ExecutePostAsync<CreateUserResponse>(
     request,
     enableRetry: false
@@ -1472,6 +1504,8 @@ var request = HyzHttpClientFactory.CreateInstance(logger);
 ## 💡 最佳实践
 
 ### 1. 合理配置重试次数
+
+重试默认关闭，以下配置在请求显式开启重试或全局默认开启时生效。非幂等请求应根据业务语义谨慎开启重试。
 
 ```csharp
 // 建议：3-5 次

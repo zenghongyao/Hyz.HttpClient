@@ -19,6 +19,13 @@ namespace Hyz.HttpClient
     /// </summary>
     public static class HttpClientPolicy
     {
+        /// <summary>
+        /// 普通请求在未指定单次重试参数时是否默认启用重试
+        /// </summary>
+        /// <value>默认值为 false，单次请求的 enableRetry 参数优先于此配置</value>
+        /// <remarks>启用时使用包含重试和熔断的管道，关闭时同时绕过该管道，不适用于文件传输接口</remarks>
+        public static bool EnableRetryByDefault { get; set; } = false;
+
         private static readonly object _lock = new object();
         private static readonly object _cleanupLock = new object();
 

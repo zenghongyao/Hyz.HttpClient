@@ -54,15 +54,16 @@ namespace Hyz.HttpClient
         /// <typeparam name="T">响应类型</typeparam>
         /// <param name="request">请求参数</param>
         /// <param name="clientName">HttpClient名称</param>
-        /// <param name="enableRetry">是否启用重试</param>
+        /// <param name="enableRetry">是否启用重试，null 表示使用 HttpClientPolicy.EnableRetryByDefault</param>
         /// <param name="completionOption">响应完成选项</param>
-        /// <param name="timeout">请求超时时间（默认30秒，null表示使用HttpClient默认超时）</param>
+        /// <param name="timeout">请求超时时间，null 表示使用 HttpClient 默认超时</param>
         /// <param name="cancellationToken">取消令牌</param>
-        /// <returns>响应结果</returns>
+        /// <returns>任务完成后返回响应结果</returns>
+        /// <remarks>关闭重试时同时绕过熔断管道</remarks>
         public async Task<T?> ExecuteAsync<T>(
             IBaseRequest<T> request,
             string? clientName = null,
-            bool enableRetry = true,
+            bool? enableRetry = null,
             HttpCompletionOption completionOption = HttpCompletionOption.ResponseContentRead,
             TimeSpan? timeout = null,
             CancellationToken cancellationToken = default) where T : class
@@ -92,7 +93,8 @@ namespace Hyz.HttpClient
                     await ExecuteRequestCore(client, request, completionOption, token);
 
                 object result;
-                if (enableRetry)
+                bool shouldRetry = enableRetry ?? HttpClientPolicy.EnableRetryByDefault;
+                if (shouldRetry)
                 {
                     var resolvedClientName = clientName ?? "default";
                     var pipeline = HttpClientPolicy.GetPipeline(resolvedClientName, request.Method, request.GetRequestApi());
@@ -130,10 +132,19 @@ namespace Hyz.HttpClient
         /// <summary>
         /// GET请求
         /// </summary>
+        /// <typeparam name="T">响应类型</typeparam>
+        /// <param name="request">请求参数</param>
+        /// <param name="clientName">HttpClient 名称</param>
+        /// <param name="enableRetry">是否启用重试，null 表示使用 HttpClientPolicy.EnableRetryByDefault</param>
+        /// <param name="completionOption">响应完成选项</param>
+        /// <param name="timeout">请求超时时间，null 表示使用 HttpClient 默认超时</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>任务完成后返回响应结果</returns>
+        /// <remarks>关闭重试时同时绕过熔断管道</remarks>
         public async Task<T?> ExecuteGetAsync<T>(
             IBaseRequest<T> request,
             string? clientName = null,
-            bool enableRetry = true,
+            bool? enableRetry = null,
             HttpCompletionOption completionOption = HttpCompletionOption.ResponseContentRead,
             TimeSpan? timeout = null,
             CancellationToken cancellationToken = default) where T : class
@@ -149,10 +160,19 @@ namespace Hyz.HttpClient
         /// <summary>
         /// POST请求
         /// </summary>
+        /// <typeparam name="T">响应类型</typeparam>
+        /// <param name="request">请求参数</param>
+        /// <param name="clientName">HttpClient 名称</param>
+        /// <param name="enableRetry">是否启用重试，null 表示使用 HttpClientPolicy.EnableRetryByDefault</param>
+        /// <param name="completionOption">响应完成选项</param>
+        /// <param name="timeout">请求超时时间，null 表示使用 HttpClient 默认超时</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>任务完成后返回响应结果</returns>
+        /// <remarks>关闭重试时同时绕过熔断管道</remarks>
         public async Task<T?> ExecutePostAsync<T>(
             IBaseRequest<T> request,
             string? clientName = null,
-            bool enableRetry = true,
+            bool? enableRetry = null,
             HttpCompletionOption completionOption = HttpCompletionOption.ResponseContentRead,
             TimeSpan? timeout = null,
             CancellationToken cancellationToken = default) where T : class
@@ -168,10 +188,19 @@ namespace Hyz.HttpClient
         /// <summary>
         /// PUT请求
         /// </summary>
+        /// <typeparam name="T">响应类型</typeparam>
+        /// <param name="request">请求参数</param>
+        /// <param name="clientName">HttpClient 名称</param>
+        /// <param name="enableRetry">是否启用重试，null 表示使用 HttpClientPolicy.EnableRetryByDefault</param>
+        /// <param name="completionOption">响应完成选项</param>
+        /// <param name="timeout">请求超时时间，null 表示使用 HttpClient 默认超时</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>任务完成后返回响应结果</returns>
+        /// <remarks>关闭重试时同时绕过熔断管道</remarks>
         public async Task<T?> ExecutePutAsync<T>(
             IBaseRequest<T> request,
             string? clientName = null,
-            bool enableRetry = true,
+            bool? enableRetry = null,
             HttpCompletionOption completionOption = HttpCompletionOption.ResponseContentRead,
             TimeSpan? timeout = null,
             CancellationToken cancellationToken = default) where T : class
@@ -187,10 +216,19 @@ namespace Hyz.HttpClient
         /// <summary>
         /// DELETE请求
         /// </summary>
+        /// <typeparam name="T">响应类型</typeparam>
+        /// <param name="request">请求参数</param>
+        /// <param name="clientName">HttpClient 名称</param>
+        /// <param name="enableRetry">是否启用重试，null 表示使用 HttpClientPolicy.EnableRetryByDefault</param>
+        /// <param name="completionOption">响应完成选项</param>
+        /// <param name="timeout">请求超时时间，null 表示使用 HttpClient 默认超时</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>任务完成后返回响应结果</returns>
+        /// <remarks>关闭重试时同时绕过熔断管道</remarks>
         public async Task<T?> ExecuteDeleteAsync<T>(
             IBaseRequest<T> request,
             string? clientName = null,
-            bool enableRetry = true,
+            bool? enableRetry = null,
             HttpCompletionOption completionOption = HttpCompletionOption.ResponseContentRead,
             TimeSpan? timeout = null,
             CancellationToken cancellationToken = default) where T : class
@@ -206,10 +244,19 @@ namespace Hyz.HttpClient
         /// <summary>
         /// PATCH请求
         /// </summary>
+        /// <typeparam name="T">响应类型</typeparam>
+        /// <param name="request">请求参数</param>
+        /// <param name="clientName">HttpClient 名称</param>
+        /// <param name="enableRetry">是否启用重试，null 表示使用 HttpClientPolicy.EnableRetryByDefault</param>
+        /// <param name="completionOption">响应完成选项</param>
+        /// <param name="timeout">请求超时时间，null 表示使用 HttpClient 默认超时</param>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>任务完成后返回响应结果</returns>
+        /// <remarks>关闭重试时同时绕过熔断管道</remarks>
         public async Task<T?> ExecutePatchAsync<T>(
             IBaseRequest<T> request,
             string? clientName = null,
-            bool enableRetry = true,
+            bool? enableRetry = null,
             HttpCompletionOption completionOption = HttpCompletionOption.ResponseContentRead,
             TimeSpan? timeout = null,
             CancellationToken cancellationToken = default) where T : class
